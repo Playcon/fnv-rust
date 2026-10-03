@@ -19,6 +19,10 @@ try {
     if((Test-Path -LiteralPath $stage) -or (Test-Path -LiteralPath $zip)){throw 'This package version already exists. Use a new version.'}
     $notice=Join-Path $root 'distribution/THIRD-PARTY-NOTICES.txt'
     if(!(Test-Path -LiteralPath $notice)){throw 'Dependency notices must be assembled before packaging.'}
+    $licenseLock=(Get-Content -LiteralPath (Join-Path $root 'distribution/DEPENDENCY-LOCK.sha256') -Raw).Trim()
+    if($licenseLock -ne (Get-FileHash -LiteralPath (Join-Path $root 'viewer/Cargo.lock')).Hash.ToLowerInvariant()) {
+        throw 'Dependency lockfile changed. Refresh license notices and their lockfile hash before packaging.'
+    }
     New-Item -ItemType Directory -Path (Join-Path $stage 'app') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $root 'viewer/target/release/nv-viewer.exe') -Destination (Join-Path $stage 'app/nv-viewer.exe')
     foreach($file in @('Play.cmd','Play.ps1','README.txt','THIRD-PARTY-NOTICES.txt')) {
