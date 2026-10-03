@@ -98,6 +98,10 @@ Subsequent face-creation state/preview is traced in
 [FACE_CREATION.md](FACE_CREATION.md);
 [VIGOR.md](VIGOR.md) records the implementation evidence and limits.
 Keep this work on the opening route before expanding coverage elsewhere.
+2026-10-03 cloud session (no Data, nv-re or original game): 910 core tests
+pass on Linux; the suspected Sitter/ActorRig furniture clock overshoot was
+ruled out by code review (OPENING.md). Remaining blockers need the Windows
+research machine.
 
 Known blockers: Bink playback, general idle dispatch, face menu,
 vigor-tester menu fidelity and mid-animation persistence. Exit to Goodsprings

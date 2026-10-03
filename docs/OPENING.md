@@ -150,7 +150,11 @@ normal movement. The user's replay supplied the input-gate evidence above.
 Sky input still does not drive the original game's DirectInput. Earlier research
 viewer43928/window722718 is stopped; its animation-repro logs are historical.
 Read-only audit identified a possible furniture endpoint overshoot between
-Sitter's clock and ActorRig::drive; unconfirmed, not a fix for this report.
+Sitter's clock and ActorRig::drive. Code review (2026-10-03, Linux session
+without game data) rules it out: Sitter::play clamps elapsed to the KF's
+stop-start, and drive() advances section SPECIAL_IDLE by dt then sync_time
+overwrites it with that clamped elapsed each frame, so the clocks cannot
+diverge or pass the clip end. Not a live comparison; no code changed.
 
 ## Current handoff: original tester compared; composition fixed
 
