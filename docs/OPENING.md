@@ -27,12 +27,13 @@ unusable vigor tester. Do not treat the eleventh batch as acceptance.
   wired; advanced item rows, furniture/terminal variants and controller glyphs
   remain incomplete.
 - Doc: the intro uses SayTo Player, not a dialogue package. The viewer lacks
-  native head/eye tracking over the chair idle. Trace008a3100 selects a
-  target and008a3b70 supplies its point to the actor's LookIK controller;
-  its target transform and smoothing limits are partly established. The
-  selected node is now traced to BPNI (Bip01 Head); final rotation math
-  remains unresolved, with no guessed
-  look-at applied. See [OPENING_LOOK_IK.md](OPENING_LOOK_IK.md).
+  native head/eye tracking over the chair idle. 2026-10-04: the rotation
+  chain is traced (Havok look-at solver `00ce0290`, easing `00c755e0`,
+  target rules `00c78160`) and implemented as `world::look_ik`, not yet
+  called. It corrects two earlier readings: `+0x1a4` means behind (model −Y),
+  and `011b05a8` caps target distance from the head, not per-update motion.
+  Set-up values and LookIK setting defaults remain untraced, so no look-at is
+  applied. See [OPENING_LOOK_IK.md](OPENING_LOOK_IK.md).
 
 Checks: 910 core tests and 82 viewer tests pass; the corrected real-XML Info
 layout additionally passed all 126 UI tests. Both workspaces passed clippy,

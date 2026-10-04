@@ -50,6 +50,7 @@ pub mod living;
 pub mod lockpick;
 pub mod locks;
 pub mod lod;
+pub mod look_ik;
 pub mod magic;
 pub mod map;
 pub mod modifier;

@@ -98,10 +98,13 @@ Subsequent face-creation state/preview is traced in
 [FACE_CREATION.md](FACE_CREATION.md);
 [VIGOR.md](VIGOR.md) records the implementation evidence and limits.
 Keep this work on the opening route before expanding coverage elsewhere.
-2026-10-03 cloud session (no Data, nv-re or original game): 910 core tests
-pass on Linux; the suspected Sitter/ActorRig furniture clock overshoot was
-ruled out by code review (OPENING.md). Remaining blockers need the Windows
-research machine.
+2026-10-04: Doc's LookIK rotation chain is traced from the Decompiling-FNV
+exports; the solver, per-update easing and target rules are in
+`world::look_ik` (12 tests, 922 core tests pass, core clippy/format/release
+clean; viewer unchanged and not rebuilt). Nothing calls it yet. Blocked on the
+controller set-up values and LookIK setting defaults (OPENING_LOOK_IK.md).
+Next: export `00c7f060`, `00c7de60`, `00c79340` and the LookIK setting
+initializers.
 
 Known blockers: Bink playback, general idle dispatch, face menu,
 vigor-tester menu fidelity and mid-animation persistence. Exit to Goodsprings
