@@ -103,7 +103,10 @@ Mode 1 is the head (`+0x144` look bone = the BPNI node, `+0x148` angle,
   initialize LookIK system for %s."
 * `00c7de60` also sets up mode 0 as a separate two-bone pose (stored at
   `+0x54`, used as mode 0's `+0xf0`): look bone 1, reference bone 0, forward
-  and cone axes `(0,1,0)`. No writer of mode 0's angle `+0xf8` was found.
+  and cone axes `(0,1,0)`. Mode 0's angle `+0xf8` is written when an
+  NPC's head is attached (`00607420`: `00649f00` → `00607810(0, angle)`),
+  as `fTrackEyeXY` (28°) in radians (found 2026-10-04); mode 0 still never
+  runs (it needs `+0x190`).
 
 ### Per-update order (`00c7aa60`)
 

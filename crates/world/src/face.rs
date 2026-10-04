@@ -16,6 +16,12 @@
 //!   1.5–4 s, then the lids close and open ([`FaceAnimation::update`]).
 //! - Without a `.lip` file the mouth doesn't move at all: the game has no
 //!   fallback driven by the sound.
+//! - While the actor has someone to look at (its head-track target), the
+//!   eyes dart: every so often they settle on a small random offset from
+//!   straight ahead that depends on the face's strongest emotion, turning
+//!   there at `fTrackSpeed` ([`FaceAnimation::track_eyes`], `0064be40`).
+//!   They don't aim at the target itself; the head does that
+//!   (`crate::look_ik`).
 
 use std::collections::VecDeque;
 
@@ -380,7 +386,106 @@ pub struct FaceSettings {
     /// `[Audio] fDialogueHead{Pitch,Roll,Yaw}Exaggeration` (2): what a
     /// `.lip`'s head turns are multiplied by as it loads.
     pub head_exaggeration: [f32; 3],
+    /// How the eyes dart ([`EyeSettings`]).
+    pub eyes: EyeSettings,
 }
+
+/// The eyes' settings (`0064be40`, `0064bf90`, `0064c410`), radians where
+/// angles; the game settings hold the ranges in degrees and the offsets in
+/// radians.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EyeSettings {
+    /// `fTrackSpeed` (2): the most the eyes turn in a second, each way.
+    pub speed: f32,
+    /// `fTrackEyeXY` (28°) and `fTrackEyeZ` (20°): how far they turn left
+    /// or right and up or down, which is full weight on the look morphs;
+    /// each kept within 0–90° (`00649f00`, `00649f70`).
+    pub heading_range: f32,
+    pub pitch_range: f32,
+    /// `fEye{Heading,Pitch}{Min,Max}OffsetEmotion{Angry,Happy,Sad,Fear,
+    /// Neutral}`, by [`EyeMood`]: (heading min, max, pitch min, max).
+    pub offsets: [[f32; 4]; 5],
+}
+
+/// Which emotion's eye offsets a face uses (`0064bf90`'s jump tables
+/// `0064c3fc`/`0064c3e4`, indexed by the strongest expression + 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EyeMood {
+    Angry = 0,
+    Happy = 1,
+    Sad = 2,
+    Fear = 3,
+    Neutral = 4,
+}
+
+impl EyeMood {
+    /// The offsets used for the strongest expression (`None` when no
+    /// expression is above 0): none, Anger, MoodCocky and MoodAngry use
+    /// the angry ones; Fear and MoodAfraid fear; Happy and Surprise happy;
+    /// Sad, MoodDrugged and MoodSad sad; MoodNeutral neutral. The others
+    /// (MoodAnnoyed, MoodPleasant, Pained, CombatAnger) leave the offset as
+    /// it was.
+    pub fn of(strongest: Option<usize>) -> Option<EyeMood> {
+        match strongest {
+            None | Some(0) | Some(8) | Some(11) => Some(EyeMood::Angry),
+            Some(1) | Some(6) => Some(EyeMood::Fear),
+            Some(2) | Some(4) => Some(EyeMood::Happy),
+            Some(3) | Some(9) | Some(12) => Some(EyeMood::Sad),
+            Some(5) => Some(EyeMood::Neutral),
+            _ => None,
+        }
+    }
+}
+
+impl EyeSettings {
+    /// The exe's defaults (`00f8xxxx` static initialisers).
+    pub const DEFAULT: EyeSettings = EyeSettings {
+        speed: 2.0,
+        heading_range: 28.0 * DEGREE,
+        pitch_range: 20.0 * DEGREE,
+        offsets: [
+            [-0.1, 0.1, -0.05, 0.15],
+            [-0.2, 0.2, -0.05, 0.15],
+            [-0.4, 0.4, -0.15, -0.05],
+            [-0.5, 0.5, 0.0, 0.0],
+            [-0.2, 0.2, -0.05, 0.15],
+        ],
+    };
+
+    fn read(gmst: impl Fn(&str, f32) -> f32) -> EyeSettings {
+        let d = EyeSettings::DEFAULT;
+        let range = |name: &str, default: f32| {
+            (gmst(name, default / DEGREE) * DEGREE).clamp(0.0, std::f32::consts::FRAC_PI_2)
+        };
+        let mut offsets = d.offsets;
+        for (o, mood) in offsets
+            .iter_mut()
+            .zip(["Angry", "Happy", "Sad", "Fear", "Neutral"])
+        {
+            let names = ["HeadingMin", "HeadingMax", "PitchMin", "PitchMax"].map(|k| {
+                let (what, end) = k.split_at(if k.starts_with("Heading") { 7 } else { 5 });
+                format!("fEye{what}{end}OffsetEmotion{mood}")
+            });
+            for (v, name) in o.iter_mut().zip(&names) {
+                *v = gmst(name, *v);
+            }
+        }
+        EyeSettings {
+            speed: gmst("fTrackSpeed", d.speed),
+            heading_range: range("fTrackEyeXY", d.heading_range),
+            pitch_range: range("fTrackEyeZ", d.pitch_range),
+            offsets,
+        }
+    }
+}
+
+impl Default for EyeSettings {
+    fn default() -> Self {
+        EyeSettings::DEFAULT
+    }
+}
+
+const DEGREE: f32 = std::f32::consts::PI / 180.0;
 
 impl FaceSettings {
     /// The exe's own defaults.
@@ -394,6 +499,7 @@ impl FaceSettings {
         talking_distance: 2000.0,
         lod_distance: 500.0,
         head_exaggeration: [2.0; 3],
+        eyes: EyeSettings::DEFAULT,
     };
 
     /// The settings in force: the load order's game settings, `ini(section,
@@ -418,6 +524,7 @@ impl FaceSettings {
                 exaggeration("Roll", d.head_exaggeration[1]),
                 exaggeration("Yaw", d.head_exaggeration[2]),
             ],
+            eyes: EyeSettings::read(gmst),
         }
     }
 
@@ -537,14 +644,15 @@ fn blend<const N: usize>(current: &mut [f32; N], key: &[f32; N], t: f32) {
     }
 }
 
-/// One face's moving channels: what it's saying and when it blinks
-/// (`BSFaceGenAnimationData`). Expressions (moods, a line's emotion) and
-/// eye tracking aren't driven yet, so they stay at rest.
+/// One face's moving channels: what it's saying, when it blinks and where
+/// its eyes are (`BSFaceGenAnimationData`). Expressions (moods, a line's
+/// emotion) aren't driven yet, so they stay at rest.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FaceAnimation {
     phonemes: Track<PHONEME_COUNT>,
     modifiers: Track<MODIFIER_COUNT>,
     custom: Track<CUSTOM_COUNT>,
+    eyes: Eyes,
     /// Its own dice (xorshift), so each face blinks on its own schedule
     /// and pictures repeat.
     dice: u64,
@@ -583,6 +691,7 @@ impl FaceAnimation {
             phonemes: Track::new(),
             modifiers: Track::new(),
             custom: Track::new(),
+            eyes: Eyes::default(),
             dice: z ^ (z >> 31),
         }
     }
@@ -669,6 +778,45 @@ impl FaceAnimation {
         a || b || c
     }
 
+    /// One eye-tracking update (`0064be40`), run while the actor has a
+    /// head-track target (`00663510`); `dt` seconds:
+    ///
+    /// 1. The darting timer runs down; at 0 the face's strongest expression
+    ///    picks how they dart next ([`EyeMood::of`]; `0064bf90`): a new
+    ///    timer and a random (heading, pitch) offset within that mood's
+    ///    ranges, or a look straight ahead (offset 0): angry 30% for 2–3 s,
+    ///    else 0.5–1.5 s; happy and neutral 30% for 3–4 s, else 0.5–1.5 s;
+    ///    sad always 2–3 s, 30% straight; fear 0.5–1.5 s, no pitch, 50%
+    ///    no heading.
+    /// 2. The eyes turn toward the offset (straight ahead + offset), at
+    ///    most `fTrackSpeed` × dt each way.
+    /// 3. Kept within the ranges, they set the look morphs (`0064c410`):
+    ///    LookLeft or LookRight = heading ÷ range, LookDown or LookUp =
+    ///    pitch ÷ range.
+    ///
+    /// True when a weight changed.
+    pub fn track_eyes(&mut self, dt: f32, settings: &FaceSettings) -> bool {
+        let strongest = strongest_expression(&[0.0; EXPRESSION_COUNT]);
+        let dice = &mut self.dice;
+        self.eyes.dart(
+            EyeMood::of(strongest),
+            !matches!(strongest, Some(e) if e > 12),
+            dt,
+            &settings.eyes,
+            &mut || unit(dice),
+        );
+        let s = &settings.eyes;
+        let (heading, pitch) = (self.eyes.heading, self.eyes.pitch);
+        let share = |v: f32, range: f32| if range > 0.0 { v / range } else { 0.0 };
+        let m = &mut self.modifiers.current;
+        let before = *m;
+        m[modifier::LOOK_LEFT] = share((-heading).max(0.0), s.heading_range);
+        m[modifier::LOOK_RIGHT] = share(heading.max(0.0), s.heading_range);
+        m[modifier::LOOK_DOWN] = share((-pitch).max(0.0), s.pitch_range);
+        m[modifier::LOOK_UP] = share(pitch.max(0.0), s.pitch_range);
+        *m != before
+    }
+
     /// The weights now. Nothing sets channels directly yet (the game lets
     /// scripts and moods do), so they are the keys' values.
     pub fn weights(&self) -> Weights {
@@ -687,13 +835,111 @@ impl FaceAnimation {
 
     /// A uniform number in 0..1 from the face's own dice.
     fn random(&mut self) -> f32 {
-        let mut x = self.dice.max(1);
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.dice = x;
-        (x >> 40) as f32 / (1u64 << 24) as f32
+        unit(&mut self.dice)
     }
+}
+
+/// Where the eyes are and where they dart (`BSFaceGenAnimationData`
+/// `+0x140`/`+0x144` the angles, `+0x17c` the timer, `+0x180`/`+0x184` the
+/// offset; the target they are offset from, `+0x150`/`+0x154`, stays at
+/// the constructor's 0).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Eyes {
+    heading: f32,
+    pitch: f32,
+    timer: f32,
+    offset: (f32, f32),
+}
+
+impl Eyes {
+    /// Steps 1 and 2 of [`FaceAnimation::track_eyes`]; `in_table` is
+    /// whether the strongest expression is one the jump table covers
+    /// (none to MoodSad); the others leave the timer and offset alone.
+    fn dart(
+        &mut self,
+        mood: Option<EyeMood>,
+        in_table: bool,
+        dt: f32,
+        s: &EyeSettings,
+        random: &mut impl FnMut() -> f32,
+    ) {
+        self.timer -= dt;
+        if self.timer <= 0.0 && in_table {
+            if let Some(mood) = mood {
+                self.pick(mood, s, random);
+            }
+        }
+        let step = s.speed * dt;
+        let toward = |from: f32, to: f32| from + (to - from).clamp(-step, step);
+        self.heading = toward(self.heading, self.offset.0);
+        self.pitch = toward(self.pitch, self.offset.1);
+        self.heading = self.heading.clamp(-s.heading_range, s.heading_range);
+        self.pitch = self.pitch.clamp(-s.pitch_range, s.pitch_range);
+    }
+
+    /// A new timer and offset for `mood` (`0064bf90`).
+    fn pick(&mut self, mood: EyeMood, s: &EyeSettings, random: &mut impl FnMut() -> f32) {
+        let mut between = |a: f32, b: f32| a + (b - a) * random();
+        let [h0, h1, p0, p1] = s.offsets[mood as usize];
+        match mood {
+            EyeMood::Angry | EyeMood::Happy | EyeMood::Neutral => {
+                let (still, quick) = (0.3 >= between(0.0, 1.0), (0.5, 1.5));
+                if still {
+                    let long = if mood == EyeMood::Angry {
+                        (2.0, 3.0)
+                    } else {
+                        (3.0, 4.0)
+                    };
+                    self.timer = between(long.0, long.1);
+                    self.offset = (0.0, 0.0);
+                } else {
+                    self.timer = between(quick.0, quick.1);
+                    let pitch = between(p0, p1);
+                    self.offset = (between(h0, h1), pitch);
+                }
+            }
+            EyeMood::Sad => {
+                self.timer = between(2.0, 3.0);
+                if 0.3 >= between(0.0, 1.0) {
+                    self.offset = (0.0, 0.0);
+                } else {
+                    let pitch = between(p0, p1);
+                    self.offset = (between(h0, h1), pitch);
+                }
+            }
+            EyeMood::Fear => {
+                self.timer = between(0.5, 1.5);
+                let heading = if 0.5 >= between(0.0, 1.0) {
+                    0.0
+                } else {
+                    between(h0, h1)
+                };
+                self.offset = (heading, 0.0);
+            }
+        }
+    }
+}
+
+/// A uniform number in 0..1 from a face's dice (xorshift).
+fn unit(dice: &mut u64) -> f32 {
+    let mut x = (*dice).max(1);
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *dice = x;
+    (x >> 40) as f32 / (1u64 << 24) as f32
+}
+
+/// The strongest expression above 0 and at most 1 (`0064bda0`), the first
+/// on a tie; `None` when none is.
+fn strongest_expression(weights: &[f32; EXPRESSION_COUNT]) -> Option<usize> {
+    let mut best: Option<(usize, f32)> = None;
+    for (i, &w) in weights.iter().enumerate() {
+        if w > 0.0 && w <= 1.0 && w > best.map_or(0.0, |b| b.1) {
+            best = Some((i, w));
+        }
+    }
+    best.map(|b| b.0)
 }
 
 #[cfg(test)]
@@ -848,6 +1094,94 @@ mod tests {
         let m = w.for_morphs();
         assert_eq!(m.modifiers[modifier::LOOK_DOWN], 0.5);
         assert_eq!(m.modifiers[modifier::LOOK_UP], 0.0);
+    }
+
+    #[test]
+    fn the_strongest_expression_picks_the_eye_mood() {
+        assert_eq!(EyeMood::of(None), Some(EyeMood::Angry));
+        assert_eq!(EyeMood::of(Some(11)), Some(EyeMood::Angry));
+        assert_eq!(EyeMood::of(Some(6)), Some(EyeMood::Fear));
+        assert_eq!(EyeMood::of(Some(4)), Some(EyeMood::Happy));
+        assert_eq!(EyeMood::of(Some(9)), Some(EyeMood::Sad));
+        assert_eq!(EyeMood::of(Some(5)), Some(EyeMood::Neutral));
+        assert_eq!(EyeMood::of(Some(7)), None);
+        assert_eq!(EyeMood::of(Some(14)), None);
+        let mut w = [0.0; EXPRESSION_COUNT];
+        assert_eq!(strongest_expression(&w), None);
+        w[3] = 0.4;
+        w[5] = 0.6;
+        w[8] = 1.5;
+        assert_eq!(strongest_expression(&w), Some(5));
+    }
+
+    #[test]
+    fn eye_settings_read_the_emotion_offsets_by_name() {
+        let s = EyeSettings::read(|name, default| match name {
+            "fEyeHeadingMaxOffsetEmotionSad" => 0.7,
+            "fEyePitchMinOffsetEmotionFear" => -0.1,
+            "fTrackEyeXY" => 120.0,
+            _ => default,
+        });
+        assert_eq!(s.offsets[EyeMood::Sad as usize][1], 0.7);
+        assert_eq!(s.offsets[EyeMood::Fear as usize][2], -0.1);
+        // Kept within 90°.
+        assert_eq!(s.heading_range, std::f32::consts::FRAC_PI_2);
+        assert_eq!(EyeSettings::read(|_, d| d), EyeSettings::DEFAULT);
+    }
+
+    #[test]
+    fn the_eyes_turn_to_their_offset_at_track_speed_and_set_the_look_morphs() {
+        let s = EyeSettings::DEFAULT;
+        let mut eyes = Eyes {
+            timer: 10.0,
+            offset: (0.6, -0.15),
+            ..Eyes::default()
+        };
+        let mut never = || 0.5;
+        // 2 rad/s: 0.1 s turns them 0.2 each way, pitch reaching −0.15.
+        eyes.dart(Some(EyeMood::Angry), true, 0.1, &s, &mut never);
+        assert!((eyes.heading - 0.2).abs() < 1e-6 && (eyes.pitch + 0.15).abs() < 1e-6);
+        // Then the heading stops at the 28° range.
+        eyes.dart(Some(EyeMood::Angry), true, 1.0, &s, &mut never);
+        assert!((eyes.heading - 28f32.to_radians()).abs() < 1e-6);
+
+        let mut face = FaceAnimation::new(3);
+        face.eyes = eyes;
+        face.eyes.timer = 10.0;
+        assert!(face.track_eyes(0.0, &FaceSettings::DEFAULT));
+        let m = face.weights().modifiers;
+        assert!((m[modifier::LOOK_RIGHT] - 1.0).abs() < 1e-5);
+        assert_eq!(m[modifier::LOOK_LEFT], 0.0);
+        assert!((m[modifier::LOOK_DOWN] - 0.15 / 20f32.to_radians()).abs() < 1e-5);
+        assert_eq!(m[modifier::LOOK_UP], 0.0);
+    }
+
+    #[test]
+    fn darting_picks_timers_and_offsets_by_mood() {
+        let s = EyeSettings::DEFAULT;
+        // Each draw 0.5: angry doesn't hold still (0.3 < 0.5): 1 s, offset
+        // in the middle of its ranges.
+        let mut eyes = Eyes::default();
+        eyes.pick(EyeMood::Angry, &s, &mut || 0.5);
+        assert_eq!(eyes.timer, 1.0);
+        assert!(eyes.offset.0.abs() < 1e-6 && (eyes.offset.1 - 0.05).abs() < 1e-6);
+        // Draws of 0.1 hold happy still for 3.1 s.
+        eyes.pick(EyeMood::Happy, &s, &mut || 0.1);
+        assert!((eyes.timer - 3.1).abs() < 1e-6);
+        assert_eq!(eyes.offset, (0.0, 0.0));
+        // Fear never looks up or down; at 0.5 it looks straight (50%).
+        eyes.pick(EyeMood::Fear, &s, &mut || 0.5);
+        assert_eq!(eyes.offset, (0.0, 0.0));
+        eyes.pick(EyeMood::Fear, &s, &mut || 0.9);
+        assert!((eyes.offset.0 - 0.4).abs() < 1e-6 && eyes.offset.1 == 0.0);
+        // Sad always waits 2–3 s.
+        eyes.pick(EyeMood::Sad, &s, &mut || 0.9);
+        assert!((eyes.timer - 2.9).abs() < 1e-6);
+        // A mood outside the table leaves timer and offset alone.
+        let before = eyes;
+        eyes.timer = 0.0;
+        eyes.dart(None, false, 0.0, &s, &mut || 0.0);
+        assert_eq!(eyes.offset, before.offset);
     }
 
     #[test]

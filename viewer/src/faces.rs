@@ -11,10 +11,13 @@
 //! within the game's distances (`world::face::Reach`). Only positions move;
 //! the normals stay as at rest (whether the game moves them isn't traced).
 //!
+//! While someone has a head-track target (`ai::Walker::looking_at`) their
+//! eyes dart after the keys have played, as the game's face update does
+//! (`00663510` → `0064be40`; `world::face::FaceAnimation::track_eyes`).
+//!
 //! Not done: the head turns a `.lip` carries (pitch, roll, yaw; which bone
-//! they turn, and in what order, isn't traced), eye tracking (how the
-//! look-at point becomes angles, and when it runs, isn't traced) and
-//! expressions (moods, a line's emotion).
+//! they turn, and in what order, isn't traced) and expressions (moods, a
+//! line's emotion).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -198,7 +201,12 @@ pub fn release_voices(
 pub fn animate_faces(
     time: Res<Time>,
     faces: Res<Faces>,
-    mut actors: Query<(Entity, &mut ActorFace, Option<&ActorRig>)>,
+    mut actors: Query<(
+        Entity,
+        &mut ActorFace,
+        Option<&ActorRig>,
+        Option<&crate::ai::Walker>,
+    )>,
     joints: Query<&GlobalTransform>,
     cameras: Query<&GlobalTransform, With<FlyCamera>>,
     mut pieces: Query<(&mut FacePiece, &mut Mesh3d, &ChildOf)>,
@@ -207,11 +215,15 @@ pub fn animate_faces(
     let eye = cameras.single().ok().map(|c| game_point(c.translation()));
     let dt = time.delta_secs();
     let mut redraw: HashMap<Entity, Weights> = HashMap::new();
-    for (root, mut face, rig) in &mut actors {
+    for (root, mut face, rig, walker) in &mut actors {
         if rig.is_some_and(|r| r.still || r.ragdoll.is_some()) {
             continue;
         }
         face.animation.update(dt, &faces.0);
+        // The eyes dart while there is someone to look at (`00663510`).
+        if walker.is_some_and(|w| w.looking_at().is_some()) {
+            face.animation.track_eyes(dt, &faces.0);
+        }
         // Measured from the camera to the head, as the game does.
         let head = joints
             .get(face.head.unwrap_or(root))

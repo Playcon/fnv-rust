@@ -132,6 +132,58 @@ timer + 1) when C is the current target, × 0.5 when C is dying, dead or
 unconscious (`Actor` virtual 139 with 0, `008844f0`: life state 1, 2 or 6).
 A non-actor scores 0.
 
+## Eyes (FaceGen, traced 2026-10-04)
+
+The eyes don't aim at the target: the head does (OPENING_LOOK_IK.md).
+While the actor has a head-track target, its face darts its eyes around
+straight ahead:
+
+* The FaceGen node's update (`00663510`) runs the eye update `0064be40(dt)`
+  after the face's keys when: the node animates (`+0xd6`), belongs to an
+  actor (`+0xe8`) whose process has a current head-track target
+  (`+0x678`), `bDisableHeadTracking` is clear, and three more conditions
+  (`006639f0`, `+0xd8`, `004f0140`) hold. The eyes are otherwise left as
+  they were.
+* `0064be40` (skipped when `BSFaceGenAnimationData +0x18e` is set): the
+  strongest expression (`0064bda0`: the highest weight in (0, 1], −1 for
+  none) picks how the eyes dart (`0064bf90`), then the eyes turn from
+  (`+0x140`, `+0x144`) toward the target (`+0x150`, `+0x154`, only ever 0,
+  from the constructor `00649680`) plus the dart offset (`+0x180`,
+  `+0x184`), at most `fTrackSpeed` (2) × dt radians each way, and
+  `0064c410` applies them.
+* `0064bf90`: the timer `+0x17c` runs down by dt; at 0 the strongest
+  expression + 1 indexes the byte table `0064c3fc` into the jump table
+  `0064c3e4` (expressions above 12 skip it):
+
+  | expressions | offsets | timer and offset |
+  | --- | --- | --- |
+  | none, Anger, MoodCocky, MoodAngry | Angry | 30%: 2–3 s, 0; else 0.5–1.5 s, random |
+  | Happy, Surprise | Happy | 30%: 3–4 s, 0; else 0.5–1.5 s, random |
+  | Sad, MoodDrugged, MoodSad | Sad | 2–3 s; 30%: 0, else random |
+  | Fear, MoodAfraid | Fear | 0.5–1.5 s; pitch 0; 50%: heading 0, else random |
+  | MoodNeutral | Neutral | 30%: 3–4 s, 0; else 0.5–1.5 s, random |
+  | MoodAnnoyed, MoodPleasant | — | nothing changes |
+
+  "random" is heading in [`fEyeHeadingMinOffsetEmotion…`,
+  `…Max…`] and pitch in [`fEyePitchMin…`, `…Max…`] (radians; `00476b70` is
+  uniform, `004dff00(p)` is true with chance p).
+* `0064c410` (when the global `011d59e0`, set by the FaceGen manager, is
+  on): heading kept within ±`fTrackEyeXY` (28°) and pitch within
+  ±`fTrackEyeZ` (20°), each range kept within 0–90° (`00649f00`,
+  `00649f70`); then LookLeft (modifier 9) or LookRight (10) = |heading| ÷
+  range, LookDown (8) or LookUp (11) = |pitch| ÷ range, written straight
+  into the modifier weights (`0064a4d0`).
+
+Implemented as `world::face::FaceAnimation::track_eyes` (with
+`EyeSettings`, `EyeMood`), called by the viewer's `faces::animate_faces`
+for actors whose `Walker::looking_at` is someone. Expressions aren't driven
+in the viewer, so every face uses the Angry row (no expression). The three
+unnamed gate conditions aren't modelled.
+
+`fTrackXY`, `fTrackMinZ`/`fTrackMaxZ`, the dead zones and fudges and
+`fTrackJustAcquiredDuration` are read only by their static initialisers, so
+they have no effect in this build.
+
 ## Settings
 
 | setting | default | object |
