@@ -50,6 +50,8 @@ persist only player_name/player_female for identity, no editable race/hair/
 eyes/morphs. Menu creation needs those fields, selection rules, a preview
 and native XML callbacks before replacing the current face auto-accept.
 
+The menu's pages, items, clicks and sliders: [RACE_SEX_MENU.md](RACE_SEX_MENU.md).
+
 ## Race and sex changes (traced 2026-10-04)
 
 `007b1ca0` runs after the race or sex changes (menu `+0xd8` is the
