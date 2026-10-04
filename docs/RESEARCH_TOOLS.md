@@ -71,17 +71,15 @@ repository of your own.
 | Head-track target (slots, chooser, timers) | `HEAD_TRACK_TARGET.md` | #5 | implemented |
 | FaceGen eye darting | `HEAD_TRACK_TARGET.md` "Eyes (FaceGen)" | #6 | implemented |
 | Face menu (RaceSexMenu) | `RACE_SEX_MENU.md`, `FACE_CREATION.md` | #7 | race/sex fallbacks implemented; menu traced, not built |
+| FaceGen controls (`SI.CTL`) | `FACEGEN_CONTROLS.md` | #9 | reader and slider/age/gender maths implemented; Randomize partly traced |
 
-Pull requests #1 to #7 are stacked; merge them in order.
+Pull requests #1 to #7 and #9 are stacked; merge them in that order.
 
 ## Next steps (M1, the face menu)
 
-1. FaceGen's control file `FACEGEN\SI.CTL` (magic `FRCTL001`): loader
-   `00aaa7d0`/`00aaa730` (binary reader `00ac3df0`..), statistics per race
-   (5) and sex (2) `00aaaf10`, age `00aabdb0`/`00aabf30` (15–65), gender
-   `00aac170`, race `00aac3f0`/`00aac820`, race morph `00aacdb0`/`00aacf40`,
-   control count `006521b0`, control read/write `00652230`/`00652470`/
-   `006524e0`. Then a core parser and evaluator with synthetic-file tests.
+1. Done in #9: the `SI.CTL` reader and maths. Left: a check against the
+   real file, Randomize's base face and scale (`00601830`), the preset faces
+   (`00877a30`).
 2. The menu (`ui::menus`) on the game's XML (`RSM_list_item_template`,
    `RSM_slider_option_template`); open handlers are listed in
    `RACE_SEX_MENU.md` "Still open".
