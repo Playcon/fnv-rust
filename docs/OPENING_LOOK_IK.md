@@ -143,6 +143,14 @@ With `+0x190` clear (always, see above), on the pose the update starts from:
    `011b05a8` (5.0 in the executable's data) from the head's world
    position, it is moved onto that line at that distance.
 
+The pose is the animation's (traced 2026-10-04): before the look runs,
+`00c7d630` calls `00c79680`, which copies every bone's node local
+transform (node array `+0xa4`, `NiAVObject +0x34`) into the pose at
+`+0x88`, scaled by the root's scale; after it, `00c79a50` writes the pose
+back to the nodes. The animation sets the nodes each frame, so for a head
+the playing sequences move, each update starts from the animated head.
+(A bone no sequence moves would keep last update's result.)
+
 The result is written back to `+0xd0`, so when nothing refreshes the
 target (see "On and off") the look stays on that nearby point. The head
 position is the look bone's model transform (`+0x144` in the pose at
@@ -250,10 +258,15 @@ wouldn't show.
 
 ### Look anchor (virtual `+0x194`)
 
-* `PlayerCharacter` (`00952ff0`): unless `+0x64a` is set, the world
+* `PlayerCharacter` (`00952ff0`): in first person (`+0x64a` clear), the world
   position (`node + 0x8c`, `0045bb80`) of the node in global `011e07d0`,
   which `0094e1d0` looks up by the name stored in `011c626c`: the
-  `Camera1st` node (`004b8b99`–`004b8bac`). Otherwise as `Actor`.
+  `Camera1st` node (`004b8b99`–`004b8bac`). In third person, as `Actor`.
+  `+0x64a` is the third-person flag (traced 2026-10-04): with it clear the
+  player's bone cache is the first-person one at `+0x68c`
+  (`PlayerCharacter` virtual `+0x1e8`, `00950a90`) and its 3D the
+  first-person model (`00950b60`); the callers of its getter `004eaf60`
+  pick between the "Player 1st Person" and "Player 3rd Person" models.
 * `Actor` (`008a2fa0`, traced 2026-10-04), in order:
   1. The first node of the bone cache from virtual `+0x1e8` (`004ab230(0)`
      reads cache `+8`). `Character` returns its cache at `+0x1b4`
@@ -282,10 +295,6 @@ wouldn't show.
 
 * The `BPND` byte 20 value of `DefaultBodyPartData0000001D`'s Head part
   (read it with the inspection tools).
-* Whether the pose each update starts from is the animation's (the
-  implementation assumes so; easing back depends on it).
-* What `PlayerCharacter +0x64a` is (it sends the player's anchor down
-  `Actor`'s path).
 * What sets the controller's previous rotation and step limit before the
   first update (see "Implementation").
 * An in-game comparison of tracking, easing and release on Doc.

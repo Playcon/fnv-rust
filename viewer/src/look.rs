@@ -5,7 +5,8 @@
 //! it looks at in the game's terms, and hands the pose over.
 //!
 //! The game asks the target for its look anchor (virtual `+0x194`): for
-//! the player in first person it is the world position of the `Camera1st`
+//! the player in first person (`+0x64a`, the third-person flag, clear; the
+//! viewer is first person only) it is the world position of the `Camera1st`
 //! node (`PlayerCharacter` `00952ff0`, the node named in
 //! `004b8b99`–`004b8bac`), which is the viewer's camera; for other actors
 //! it is their `Bip01 Head` (`Actor` `008a2fa0`, [`world::look_ik::anchor`]),
