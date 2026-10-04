@@ -9,7 +9,8 @@
 //! starts, `BPND` (84 bytes, loaded as-is into the part at `+0x5c`: damage
 //! multiplier f32 at 0, flags u8 at 4 — 0x01 severable, 0x08 explodable,
 //! 0x40 its own explode chance — part type u8 at 5, health % u8 at 6, actor
-//! value i8 at 7, V.A.T.S. to-hit chance u8 at 8, explode chance u8 at 9),
+//! value i8 at 7, V.A.T.S. to-hit chance u8 at 8, explode chance u8 at 9,
+//! head-tracking max angle f32 at 20),
 //! `NAM1` the limb's gore model,
 //! `NAM4` the gore's bone, `NAM5` texture hashes; `RAGA` a ragdoll
 //! (loader `005e4d80` / `005e4100`). Parts are kept by type (15 slots,
@@ -107,8 +108,13 @@ pub mod part {
 /// `BPND` flags the code reads.
 pub mod flags {
     pub const SEVERABLE: u8 = 0x01;
+    /// A part the IK set-up iterates (`005e5320` keeps parts with it).
+    pub const IK_DATA: u8 = 0x02;
     /// `008b4360`.
     pub const EXPLODABLE: u8 = 0x08;
+    /// The head-tracking part: its `BPNI` node turns toward whom the actor
+    /// looks at (`0087e940`, see `crate::look_ik`).
+    pub const HEAD_TRACKING: u8 = 0x20;
     /// Uses its own explode chance (`008b4cd0`).
     pub const OWN_EXPLODE_CHANCE: u8 = 0x40;
 }
@@ -132,6 +138,10 @@ pub struct BodyPart {
     pub node: String,
     /// `BPNT`: the node VATS aims at.
     pub target: String,
+    /// `BPNI`: the node its IK starts at (part `+0x14`, `005e42b0`); for
+    /// the head-tracking part, the bone that turns (`Bip01 Head` in
+    /// `DefaultBodyPartData`, unlike `BPNN`'s `Bip01 Neck1`).
+    pub ik_node: String,
     /// `BPND` f32 at 0: the damage multiplier for ranged hits (head ×2).
     pub damage_mult: f32,
     /// `BPND` u8 at 4 ([`flags`]).
@@ -148,6 +158,10 @@ pub struct BodyPart {
     pub to_hit_chance: u8,
     /// `BPND` u8 at 9.
     pub explode_chance: u8,
+    /// `BPND` f32 at 20: how far, in degrees, head tracking may turn the
+    /// head from where its parent points (part `+0x70`, read by `0087e580`
+    /// for the look cone's half-angle; see `crate::look_ik`).
+    pub tracking_max_angle: f32,
     /// `NAM1`: the limb's gore model.
     pub limb_model: Option<String>,
 }
@@ -222,6 +236,17 @@ impl BodyPartData {
         self.parts.get(usize::from(part_type))?.as_ref()
     }
 
+    /// The head-tracking part: the first, in type order, that the IK set-up
+    /// iterates (flag [`flags::IK_DATA`], `005e5320`) and that has
+    /// [`flags::HEAD_TRACKING`] (`0087e940`; `0087e130` takes only the
+    /// first).
+    pub fn head_tracking_part(&self) -> Option<&BodyPart> {
+        self.parts
+            .iter()
+            .flatten()
+            .find(|p| p.flags & flags::IK_DATA != 0 && p.flags & flags::HEAD_TRACKING != 0)
+    }
+
     /// The part whose condition is an actor value (`005e5130`).
     pub fn part_by_actor_value(&self, actor_value: u16) -> Option<&BodyPart> {
         self.parts
@@ -283,7 +308,7 @@ fn read_part(subrecords: &[esm::Subrecord], i: &mut usize) -> Option<BodyPart> {
     take(s, i, PNAM);
     let node = take(s, i, BPNN)?.zstring();
     let target = take(s, i, BPNT)?.zstring();
-    take(s, i, BPNI);
+    let ik_node = take(s, i, BPNI).map(|s| s.zstring()).unwrap_or_default();
     let d = &take(s, i, BPND)?.data;
     if d.len() < 84 {
         return None;
@@ -299,6 +324,7 @@ fn read_part(subrecords: &[esm::Subrecord], i: &mut usize) -> Option<BodyPart> {
         name,
         node,
         target,
+        ik_node,
         damage_mult: le_f32(d, 0),
         flags: d[4],
         part_type: d[5],
@@ -306,6 +332,7 @@ fn read_part(subrecords: &[esm::Subrecord], i: &mut usize) -> Option<BodyPart> {
         actor_value: d[7] as i8,
         to_hit_chance: d[8],
         explode_chance: d[9],
+        tracking_max_angle: le_f32(d, 20),
         limb_model,
     })
 }
@@ -671,6 +698,33 @@ mod tests {
         assert_eq!(data.part(part::LEFT_ARM).unwrap().name, "Left Arm");
         assert!(data.part(part::RIGHT_ARM).is_none());
         assert_eq!(data.part_by_actor_value(26).unwrap().name, "Torso");
+    }
+
+    #[test]
+    fn the_head_tracking_part_brings_its_ik_node_and_angle() {
+        let mut subs = part("Torso", "Bip01", 0, 1.0, 60, 26);
+        let mut head = part("Head", "Bip01 Neck1", 1, 2.0, 20, 25);
+        // BPNI names the bone that turns; BPND byte 4 its flags, 20 the angle.
+        head[3] = sub(b"BPNI", &zstr("Bip01 Head"));
+        let mut bpnd = head[4].data.clone();
+        bpnd[4] = flags::IK_DATA | flags::HEAD_TRACKING | flags::SEVERABLE;
+        bpnd[20..24].copy_from_slice(&40.0f32.to_le_bytes());
+        head[4] = sub(b"BPND", &bpnd);
+        subs.extend(head);
+        let data = BodyPartData::from_subrecords(FormId(0x1D), &subs);
+        let tracking = data.head_tracking_part().unwrap();
+        assert_eq!(tracking.name, "Head");
+        assert_eq!(tracking.ik_node, "Bip01 Head");
+        assert_eq!(tracking.node, "Bip01 Neck1");
+        assert_eq!(tracking.tracking_max_angle, 40.0);
+        // A part needs both flags: the torso, without them, is never picked.
+        assert_eq!(data.part(part::TORSO).unwrap().tracking_max_angle, 0.0);
+        let mut subs = part("Head", "Bip01 Neck1", 1, 2.0, 20, 25);
+        let mut bpnd = subs[4].data.clone();
+        bpnd[4] = flags::HEAD_TRACKING;
+        subs[4] = sub(b"BPND", &bpnd);
+        let data = BodyPartData::from_subrecords(FormId(0x1D), &subs);
+        assert!(data.head_tracking_part().is_none());
     }
 
     #[test]

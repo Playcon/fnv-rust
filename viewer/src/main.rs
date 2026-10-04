@@ -26,6 +26,7 @@ mod lighting;
 mod lockpick;
 mod lod;
 mod lod_objects;
+mod look;
 mod map;
 mod menus;
 mod music;
@@ -175,6 +176,8 @@ fn main() {
         .insert_resource(sitting::Seats::new(&game.order))
         .insert_resource(faces::Faces::new(&game))
         .insert_resource(actors::AnimSettings::read(&game.settings))
+        .insert_resource(look::LookSettings::read(&game.settings))
+        .init_resource::<look::PlayerAnchor>()
         .insert_resource(ai::Moves::new(&game))
         .insert_resource(ai::CellBuffer::new(&game))
         .insert_resource(GameFiles(game))
@@ -329,7 +332,13 @@ fn main() {
                     report::report_key,
                     sounds::play_sounds,
                 ),
-                (actors::script_idles, actors::animate_actors).chain(),
+                (
+                    look::attach_head_tracking,
+                    look::follow_player,
+                    actors::script_idles,
+                    actors::animate_actors,
+                )
+                    .chain(),
                 report_fps,
             )
                 .chain(),

@@ -212,7 +212,13 @@ impl Walker {
         )
     }
 
-    fn at(reference: FormId, position: [f32; 3], heading: f32, scale: f32, female: bool) -> Walker {
+    pub(crate) fn at(
+        reference: FormId,
+        position: [f32; 3],
+        heading: f32,
+        scale: f32,
+        female: bool,
+    ) -> Walker {
         Walker {
             reference,
             position,
@@ -317,6 +323,16 @@ impl Walker {
         self.next = 0;
         self.progress = 0.0;
         self.doors_ahead.clear();
+    }
+
+    /// Whom it looks at now (and turns its body to), if anyone.
+    pub fn looking_at(&self) -> Option<FormId> {
+        self.look_at.map(|(who, _)| who)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn look_at_for_test(&mut self, who: FormId) {
+        self.look_at = Some((who, f32::MAX));
     }
 
     /// Where its skeleton stands in the world (game axes): turned by its

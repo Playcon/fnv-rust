@@ -20,6 +20,7 @@
 use std::sync::Arc;
 
 use bevy::asset::RenderAssetUsages;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::render::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
@@ -347,6 +348,7 @@ pub fn spawn_actor(
         rig,
         crate::ai::Walker::new(actor),
         crate::sitting::Life::default(),
+        crate::look::ActorBase(esm::FormId(actor.base)),
     ));
     (root, joints)
 }
@@ -453,6 +455,14 @@ pub fn script_idles(
     }
 }
 
+/// The animation and look settings, and where the player is for looks.
+#[derive(SystemParam)]
+pub struct PoseSettings<'w> {
+    anim: Option<Res<'w, AnimSettings>>,
+    look: Option<Res<'w, crate::look::LookSettings>>,
+    anchor: Option<Res<'w, crate::look::PlayerAnchor>>,
+}
+
 /// Every frame: each actor's animations are picked and run on, and its
 /// joints take the pose; the dead's follow their ragdolls until they come
 /// to rest. While the dialogue menu or a viewer menu is open the game is
@@ -461,11 +471,15 @@ pub fn script_idles(
 /// menu, the speaker: they stop walking and turn to face the player.
 pub fn animate_actors(
     time: Res<Time>,
-    settings: Option<Res<AnimSettings>>,
+    settings: PoseSettings,
     conversation: Option<Res<crate::dialogue::Conversation>>,
     menus: Option<Res<crate::menus::Menus>>,
     collision: Option<Res<crate::walk::CellCollision>>,
-    mut rigs: Query<&mut ActorRig>,
+    mut rigs: Query<(
+        &mut ActorRig,
+        Option<&mut crate::look::HeadTracking>,
+        Option<&crate::ai::Walker>,
+    )>,
     mut joints: Query<&mut Transform>,
 ) {
     let now = time.elapsed_secs();
@@ -476,7 +490,12 @@ pub fn animate_actors(
     if menus.as_ref().is_some_and(|m| m.is_open()) {
         return;
     }
-    for mut rig in &mut rigs {
+    let PoseSettings {
+        anim: settings,
+        look: look_settings,
+        anchor,
+    } = settings;
+    for (mut rig, mut head, walker) in &mut rigs {
         let rig = &mut *rig;
         // In the dialogue menu only the speaker moves: `ai` holds everyone
         // else (`still`) and has the speaker stop walking and turn in place
@@ -503,7 +522,25 @@ pub fn animate_actors(
                 rig.player.settings = s.0;
             }
             rig.drive(dt);
-            rig.pose_now(now)
+            let mut pose = rig.pose_now(now);
+            // The head turns toward whom they look at (`world::look_ik`),
+            // over the animation's pose.
+            if let (Some(Some(look)), Some(walker), Some(settings), Some(anchor)) = (
+                head.as_deref_mut().map(|h| h.0.as_mut()),
+                walker,
+                &look_settings,
+                &anchor,
+            ) {
+                crate::look::apply(
+                    look,
+                    walker,
+                    anchor,
+                    &settings.0,
+                    &rig.skeleton.bones,
+                    &mut pose,
+                );
+            }
+            pose
         };
         for (joint, t) in rig.joints.iter().zip(&pose) {
             if let Ok(mut transform) = joints.get_mut(*joint) {

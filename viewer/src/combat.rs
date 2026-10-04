@@ -755,6 +755,7 @@ mod tests {
                 name: name.into(),
                 node: node.into(),
                 target: node.into(),
+                ik_node: node.into(),
                 damage_mult: 1.0,
                 flags: 0,
                 part_type: kind,
@@ -762,6 +763,7 @@ mod tests {
                 actor_value: 25,
                 to_hit_chance: 30,
                 explode_chance: 0,
+                tracking_max_angle: 0.0,
                 limb_model: None,
             })
         };

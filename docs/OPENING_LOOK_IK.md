@@ -2,9 +2,10 @@
 
 Research status, 2026-10-04. FNV executable addresses below are build
 1.4.0.525 (Steam, Steamless-unpacked), the same addresses as the
-`nv-re/decomp/codex-m1` Ghidra project. No runtime behavior has been
-implemented from this trace. The solver, limits, setup values and on/off
-logic are now traced; see "Native solver" below.
+`nv-re/decomp/codex-m1` Ghidra project. The solver, limits, setup values
+and on/off logic are traced (see "Native solver"); the head chain is
+implemented in `world::look_ik` and the viewer (see "Implementation").
+Not yet compared with the original game.
 
 ## Confirmed native path
 
@@ -184,7 +185,9 @@ A setting object is `{vtable, value, name}`; the code reads `object + 4`.
   fMaxTrackingDist (`008a3c30`, `008a3c10`): easing off (`008a3bf0(0)`),
   `00c75580(1)`, then `008a3b70` with the target's `+0x194` anchor, which
   stores the target xyz at `+0xd0` (w = 0). The two points the distance is
-  measured between have not been traced.
+  measured between are the two actors' positions: the target's from its
+  virtual `+0x1f4` (`008a3100`, stored in locals `-0x10..-0x8`) and the
+  looking actor's from the same virtual.
 * Otherwise, if the look is on (`+0xb3`) and not already easing, easing is
   switched on (`008a3bf0(1)`). The solve keeps aiming at the last stored
   target at 1° per update until the step falls below 0.5°, then the look
@@ -195,6 +198,16 @@ A setting object is `{vtable, value, name}`; the code reads `object + 4`.
   to identity and arms both step limiters.
 * `00c7d630` runs the update only when `bLookIK:RagdollAnim` and `+0xb3`.
 
+### Look anchor (virtual `+0x194`)
+
+* `PlayerCharacter` (`00952ff0`): unless `+0x64a` is set, the world
+  position (`node + 0x8c`, `0045bb80`) of the node in global `011e07d0`,
+  which `0094e1d0` looks up by the name stored in `011c626c`: the
+  `Camera1st` node (`004b8b99`–`004b8bac`). Otherwise as `Actor`.
+* `Actor` (`008a2fa0`): a node from virtual `+0x1e8` and `004ab230(0)`
+  when there is one (its z may be replaced through `00c757b0`), else the
+  actor's position with z raised by 0.9 × `008853a0`. Not traced further.
+
 ## Still open
 
 * The object at `(controller+0x2a4)+0x1c` that can override the head's
@@ -203,8 +216,41 @@ A setting object is `{vtable, value, name}`; the code reads `object + 4`.
   (read it with the inspection tools).
 * `00c78160`'s below-target clamps (`+5`/`-5`, 5 units per update): their
   coordinate meaning, as noted above.
-* The distance operands in `008a3100`, and an in-game comparison of
-  tracking, easing and release on Doc.
+* `Actor`'s look anchor (`008a2fa0`) beyond the outline above, and what
+  `PlayerCharacter +0x64a` is.
+* What sets the controller's previous rotation and step limit before the
+  first update (see "Implementation").
+* An in-game comparison of tracking, easing and release on Doc.
+
+## Implementation (2026-10-04)
+
+`world::look_ik` implements the head chain as traced: settings with the
+game's defaults (INI overrides), set-up from the head-tracking part
+(`world::body_parts::BodyPartData::head_tracking_part`: flags `0x02` and
+`0x20`, its `BPNI` bone and `BPND` byte 20), the tracking decision, the
+solve, the step limit, the validity check, propagation to the bones below
+and the ease-out. The viewer (`viewer/src/look.rs`) runs it in
+`animate_actors` after the animation pose, with the player's eye (the
+camera, standing in for `Camera1st`) as the target and the actors'
+positions for the distance, once per frame as the game does per update.
+
+Left out, as untraced: mode 0, the `+0xc0` extra head rotation,
+`00c78160`'s below-target smoothing, the `+0x2a4`/`+0x1c` axis override,
+`+0x43`, and targets other than the player. Two choices are inferences,
+labelled in the code:
+
+* The set-up pose is the skeleton's own pose (`nif::posed` with no
+  sequence); which pose the game has at `0087e130` isn't traced.
+* The controller starts with no previous rotation and the step limit
+  armed. The constructor writes neither; the solver's "previous is
+  `(0,0,0,0)`" branch only does anything when the limit is armed in the
+  same update, and every reset path writes identity, never zero.
+
+Tests in `world::look_ik` cover the defaults and INI, set-up, the distance
+bounds, a 3.5° step per update and convergence, the cone clamp, bones
+below following, the world-to-skeleton transform, easing at 1° and the
+shut-off, the setting and on/off gates, and an invalid target leaving the
+head alone. `world::body_parts` tests the new `BPNI` and angle fields.
 
 ## Opening context
 
