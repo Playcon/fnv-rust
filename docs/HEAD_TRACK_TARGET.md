@@ -180,9 +180,11 @@ for actors whose `Walker::looking_at` is someone. Expressions aren't driven
 in the viewer, so every face uses the Angry row (no expression). The three
 unnamed gate conditions aren't modelled.
 
-`fTrackXY`, `fTrackMinZ`/`fTrackMaxZ`, the dead zones and fudges and
+`fTrackXY`, `fTrackMinZ`/`fTrackMaxZ`, the fudges and
 `fTrackJustAcquiredDuration` are read only by their static initialisers, so
-they have no effect in this build.
+they have no effect in this build. The dead zones (`fTrackDeadZoneXY`/`Z`)
+are read by `00649fe0`/`0064a070` when a head is attached (`00607420`), to
+set LookIK mode 0's limits (`00c748d0(0, …)`), and mode 0 never runs.
 
 ## Settings
 
