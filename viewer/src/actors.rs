@@ -461,6 +461,7 @@ pub struct PoseSettings<'w> {
     anim: Option<Res<'w, AnimSettings>>,
     look: Option<Res<'w, crate::look::LookSettings>>,
     anchor: Option<Res<'w, crate::look::PlayerAnchor>>,
+    heads: Option<ResMut<'w, crate::look::HeadAnchors>>,
 }
 
 /// Every frame: each actor's animations are picked and run on, and its
@@ -494,6 +495,7 @@ pub fn animate_actors(
         anim: settings,
         look: look_settings,
         anchor,
+        mut heads,
     } = settings;
     for (mut rig, mut head, walker) in &mut rigs {
         let rig = &mut *rig;
@@ -531,14 +533,22 @@ pub fn animate_actors(
                 &look_settings,
                 &anchor,
             ) {
+                let anchors = crate::look::Anchors {
+                    player: anchor,
+                    actors: heads.as_deref(),
+                };
                 crate::look::apply(
                     look,
                     walker,
-                    anchor,
+                    &anchors,
                     &settings.0,
                     &rig.skeleton.bones,
                     &mut pose,
                 );
+            }
+            // Where the others look at this one.
+            if let (Some(walker), Some(heads)) = (walker, heads.as_deref_mut()) {
+                crate::look::record(walker, &rig.skeleton.bones, &pose, heads);
             }
             pose
         };

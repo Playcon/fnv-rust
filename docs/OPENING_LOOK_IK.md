@@ -204,9 +204,29 @@ A setting object is `{vtable, value, name}`; the code reads `object + 4`.
   position (`node + 0x8c`, `0045bb80`) of the node in global `011e07d0`,
   which `0094e1d0` looks up by the name stored in `011c626c`: the
   `Camera1st` node (`004b8b99`–`004b8bac`). Otherwise as `Actor`.
-* `Actor` (`008a2fa0`): a node from virtual `+0x1e8` and `004ab230(0)`
-  when there is one (its z may be replaced through `00c757b0`), else the
-  actor's position with z raised by 0.9 × `008853a0`. Not traced further.
+* `Actor` (`008a2fa0`, traced 2026-10-04), in order:
+  1. The first node of the bone cache from virtual `+0x1e8` (`004ab230(0)`
+     reads cache `+8`). `Character` returns its cache at `+0x1b4`
+     (`005d9f90`); `004aad00` fills it from the root's `Bip01` and the five
+     names at `01188b74`: `Bip01 Head`, `Weapon`, `Bip01 L ForeTwist`,
+     `Bip01 Spine2`, `Bip01 Neck1` (flag byte at `+4+8i`, node at `+8+8i`;
+     a missing one logs "MODELS: Missing bone '%s' for '%s'"). So the first
+     node is `Bip01 Head`. `Creature`'s `+0x1e8` (`00acbb70`) returns none.
+  2. Failing that, the 3D root's (virtual `+0x1d0`) time controller of
+     type `NiControllerManager` (RTTI `011f36ac`, found by `00a5c570`), its
+     object palette (`00559450`), and the palette's node (virtual `+0x8c`)
+     named by `011c61ac`, which `004b7920` sets to `Bip01 Head`.
+  3. With a node: its world translation (`+0x8c`). If the actor has a look
+     controller (`+0xac`), `00c757b0` would replace z with the controller's
+     own head position, but only while controller `+0x190` is set (see
+     above), so not in this build.
+  4. Without one: the position (virtual `+0x1f4`) with z raised by 0.9
+     (double `0106b9e8`) × the height from `008853a0`: the bounds' z extent
+     (virtual `+0x1dc` max − `+0x1d8` min; `MobileObject` takes them from
+     the character controller when there is one) × `00567400`'s scale (the
+     reference's `+0x3c` × `TESNPC +0x1f4` for NPCs, form type `0x2a`, or
+     `00567470` for creatures, `0x2b`). The process caches the height at
+     `+0x42c` (`00885490`/`008854b0`).
 
 ## Still open
 
@@ -216,8 +236,8 @@ A setting object is `{vtable, value, name}`; the code reads `object + 4`.
   (read it with the inspection tools).
 * `00c78160`'s below-target clamps (`+5`/`-5`, 5 units per update): their
   coordinate meaning, as noted above.
-* `Actor`'s look anchor (`008a2fa0`) beyond the outline above, and what
-  `PlayerCharacter +0x64a` is.
+* What `PlayerCharacter +0x64a` is (it sends the player's anchor down
+  `Actor`'s path).
 * What sets the controller's previous rotation and step limit before the
   first update (see "Implementation").
 * An in-game comparison of tracking, easing and release on Doc.
@@ -235,8 +255,18 @@ camera, standing in for `Camera1st`) as the target and the actors'
 positions for the distance, once per frame as the game does per update.
 
 Left out, as untraced: mode 0, the `+0xc0` extra head rotation,
-`00c78160`'s below-target smoothing, the `+0x2a4`/`+0x1c` axis override,
-`+0x43`, and targets other than the player. Two choices are inferences,
+`00c78160`'s below-target smoothing, the `+0x2a4`/`+0x1c` axis override
+and `+0x43`.
+
+Other actors are looked at by their `Bip01 Head`
+(`world::look_ik::anchor`, `ANCHOR_BONE`): the viewer keeps each living
+actor's head position after posing it (`look::record`), and an actor that
+looks at someone posed later in the same frame sees the previous frame's
+head (inference: the game reads the node's world transform, updated after
+the animation, and its actor update order isn't traced). The 0.9 × height
+fallback is in the core (`anchor`, `actor_height`) but the viewer doesn't
+know actors' bounds, so an actor without the bone isn't looked at; nor is
+a dead one. Two choices are inferences,
 labelled in the code:
 
 * The set-up pose is the skeleton's own pose (`nif::posed` with no

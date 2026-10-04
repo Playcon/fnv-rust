@@ -52,7 +52,8 @@ pose correction. Next: native gaze solver, exact camera-transition replay,
 full opening acceptance and in-progress animation save restoration.
 Gaze (2026-10-04): the native LookIK head chain is traced
 (OPENING_LOOK_IK.md) and implemented in `world::look_ik`, with the viewer
-turning heads toward the player (`viewer/src/look.rs`). Core tests pass;
+turning heads toward the player and toward other actors' `Bip01 Head`
+(`Actor` look anchor `008a2fa0`, traced; `viewer/src/look.rs`). Core tests pass;
 not yet run with game data or compared in game. Next action: run the
 opening with Doc and compare head tracking, easing and release against
 the original.
