@@ -318,6 +318,10 @@ that never change"). The aim point (`00c78160`) is implemented
 gives the over-the-shoulder point, and the kept target is brought within 5
 of the head. A target out of range leaves the look as it is.
 
+Whom each actor looks at comes from the head-track target stack
+(HEAD_TRACK_TARGET.md, `world::head_track`), through the viewer's
+`Walker::looking_at`.
+
 Other actors are looked at by their `Bip01 Head`
 (`world::look_ik::anchor`, `ANCHOR_BONE`): the viewer keeps each living
 actor's head position after posing it (`look::record`), and an actor that

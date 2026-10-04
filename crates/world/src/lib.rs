@@ -39,6 +39,7 @@ pub mod factions;
 pub mod functions;
 pub mod furniture;
 pub mod grass;
+pub mod head_track;
 pub mod idles;
 mod image_space;
 pub mod impacts;
