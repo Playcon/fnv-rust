@@ -33,6 +33,10 @@ unusable vigor tester. Do not treat the eleventh batch as acceptance.
   selected node is now traced to BPNI (Bip01 Head); final rotation math
   remains unresolved, with no guessed
   look-at applied. See [OPENING_LOOK_IK.md](OPENING_LOOK_IK.md).
+  Update 2026-10-04: the head chain and the target choice are traced and
+  implemented (OPENING_LOOK_IK.md, [HEAD_TRACK_TARGET.md](HEAD_TRACK_TARGET.md));
+  `SayTo` now puts the player in Doc's ACTION head-track slot. Not yet
+  compared in game.
 
 Checks: 910 core tests and 82 viewer tests pass; the corrected real-XML Info
 layout additionally passed all 126 UI tests. Both workspaces passed clippy,

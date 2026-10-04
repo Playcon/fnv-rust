@@ -22,6 +22,7 @@ use esm::FormId;
 use world::ai::{current_package, destination, DialogueStep, NavMesh};
 use world::dialogue::{Speaker, PLAYER_REF};
 use world::furniture::SitState;
+use world::head_track::{Candidate, HeadTrack, Slot};
 use world::movement::{
     self as mv, AvoidStep, Avoidance, MoveSettings, Obstacle, PackageClock, ProcessLevel, Turn,
     TurnSide,
@@ -42,9 +43,9 @@ pub struct Moves {
     /// `fAIMoveDistanceToRecalcFollowPath` (300): a target that moved this
     /// far since the path was made gets a new one.
     pub recalc_follow: f32,
-    /// `fAIHoldDefaultHeadTrackTimer` (10 s): how long someone keeps looking
-    /// at whom they spoke to.
-    pub hold_head_track: f32,
+    /// Head tracking's settings (`world::head_track`): game settings and
+    /// `[HeadTracking]` in the INI.
+    pub head_track: world::head_track::Settings,
 }
 
 impl Moves {
@@ -55,7 +56,10 @@ impl Moves {
             settings: MoveSettings::read(order, &|section, key| game.settings.float(section, key)),
             social: SocialSettings::read(order),
             recalc_follow: g("fAIMoveDistanceToRecalcFollowPath", 300.0),
-            hold_head_track: g("fAIHoldDefaultHeadTrackTimer", 10.0),
+            head_track: world::head_track::Settings::read(
+                |name| world::scripting::game_setting(order, name),
+                |section, key| game.settings.float(section, key),
+            ),
         }
     }
 }
@@ -140,8 +144,11 @@ pub struct Walker {
     /// game doesn't go back to the travel, only a restart of the package
     /// does).
     travelled: bool,
-    /// Whom they look at (and so turn the body to, `008a3100`), until when.
-    look_at: Option<(FormId, f32)>,
+    /// Whom they look at (and so turn the body to, `008a3100`): the head-
+    /// track target slots (`world::head_track`).
+    pub(crate) head_track: HeadTrack,
+    /// `bDisableHeadTracking:HeadTracking`: the head doesn't follow.
+    head_tracking_off: bool,
     /// How they fight, once read (`fighting::Kit`), and the fight under way.
     pub(crate) kit: Option<crate::fighting::Kit>,
     pub(crate) fight: Option<crate::fighting::Fight>,
@@ -246,7 +253,8 @@ impl Walker {
             social: None,
             dialogue_done: false,
             travelled: false,
-            look_at: None,
+            head_track: HeadTrack::default(),
+            head_tracking_off: false,
             kit: None,
             fight: None,
             detect_at: 0.0,
@@ -326,13 +334,17 @@ impl Walker {
     }
 
     /// Whom it looks at now (and turns its body to), if anyone.
+    /// The head follows only while head tracking is on (`008a3100`: with
+    /// `bDisableHeadTracking` the look eases out).
     pub fn looking_at(&self) -> Option<FormId> {
-        self.look_at.map(|(who, _)| who)
+        self.head_track
+            .current()
+            .filter(|_| !self.head_tracking_off)
     }
 
     #[cfg(test)]
     pub(crate) fn look_at_for_test(&mut self, who: FormId) {
-        self.look_at = Some((who, f32::MAX));
+        self.head_track.set(Slot::Action, Some(who));
     }
 
     /// Where its skeleton stands in the world (game axes): turned by its
@@ -526,6 +538,8 @@ pub fn move_actors(
     let (others, obstacles) = seen(order, state, &attack, now, &actors, player_velocity);
     let interior = state.player_world.is_none();
     let mut starts = std::mem::take(&mut starts.0);
+    // How many chose whom to look at this frame (`011df674`).
+    let mut head_track_choices = 0;
     for (mut walker, mut life, mut rig, mut transform, mut visibility) in &mut actors {
         let walker = &mut *walker;
         let me = walker.reference;
@@ -601,6 +615,9 @@ pub fn move_actors(
                 }
             }
         }
+        // What asked them to look at someone holds while it lasts and then
+        // lets go (`world::head_track`).
+        head_track_asks(walker, speaker, in_menu, &lines, &chats, &moves.head_track);
         let before = walker.position;
         walker.turning = None;
         // Talking to the player in the dialogue menu: they stop where they
@@ -720,6 +737,16 @@ pub fn move_actors(
             };
             crate::fighting::detect(&noticing, state, walker, &others);
         }
+        // Whom they look at of their own accord (`008a3100`), seated too.
+        choose_head_track(
+            walker,
+            state,
+            &others,
+            &collision.0,
+            &moves.head_track,
+            &mut head_track_choices,
+            dt,
+        );
         // A fight over (its target dead, or a script's `StopCombat`): back
         // to their package.
         if !state.combat.contains_key(&me) && walker.fight.is_some() {
@@ -1444,7 +1471,7 @@ fn dialogue_frame(
             let topic = topic.unwrap_or(world::social::topics::HELLO);
             if let Some(info) = pick_line(order, ctx.state, me, target, topic) {
                 lines.say(me, target, info);
-                walker.look_at = Some((target, ctx.now + moves.hold_head_track));
+                walker.head_track.set(Slot::Action, Some(target));
             }
             if let Some(s) = walker.social.as_mut() {
                 s.greeted(&moves.social);
@@ -1664,7 +1691,7 @@ fn chat_frame(
         if !seated && (at[0] - walker.position[0]).hypot(at[1] - walker.position[1]) > 1.0 {
             face(walker, toward, ctx.dt, false, ctx.moves);
         }
-        walker.look_at = Some((other, ctx.now + moves.hold_head_track));
+        walker.head_track.set(Slot::Dialog, Some(other));
         return;
     }
     let my_radius = walker
@@ -1706,7 +1733,7 @@ fn chat_frame(
     }
     walker.clear_path();
     if !alone {
-        walker.look_at = Some((other, ctx.now + moves.hold_head_track));
+        walker.head_track.set(Slot::Dialog, Some(other));
     }
     // The starter's turn: only when the other faces well away.
     let their_off = mv::wrap_pi(mv::heading_to(at, walker.position) - their_heading).abs();
@@ -1796,7 +1823,7 @@ fn social_frame(
             );
             if let Some(info) = line {
                 lines.say(me, PLAYER_REF, info);
-                walker.look_at = Some((PLAYER_REF, ctx.now + moves.hold_head_track));
+                walker.head_track.set(Slot::Action, Some(PLAYER_REF));
                 // They turn to the player standing, unless their package is
                 // one that keeps them busy (GREET, `008dbe30`).
                 let busy = matches!(
@@ -1895,18 +1922,115 @@ fn social_frame(
     }
 }
 
+/// Holds or lets go of the head-track slots others asked for, the viewer's
+/// stand-in for where the game sets and clears them
+/// (`docs/HEAD_TRACK_TARGET.md`):
+///
+/// * ACTION (a line said to someone: the "Say To" package, a greeting, and
+///   a script's `SayTo` to the player, `005c9100`) holds while they say
+///   it, then is cleared with demote, as the "Say To" package does when it
+///   ends (`008dbe30`). That it ends with the line is inferred.
+/// * DIALOG (a conversation: with someone, `00935480`; the dialogue menu
+///   with the player) holds while it lasts, then is cleared with demote
+///   (`00933d20`).
+///
+/// The speaker in a conversation with the player has the player put in
+/// the slot here; the other sites put their target in when they start.
+fn head_track_asks(
+    walker: &mut Walker,
+    speaker: Option<FormId>,
+    in_menu: bool,
+    lines: &Lines,
+    chats: &Chats,
+    settings: &world::head_track::Settings,
+) {
+    let me = walker.reference;
+    walker.head_tracking_off = settings.disabled;
+    let with_player = speaker == Some(me);
+    if with_player {
+        let slot = if in_menu { Slot::Dialog } else { Slot::Action };
+        walker.head_track.set(slot, Some(PLAYER_REF));
+    }
+    let saying = lines.is_saying(me) || (with_player && !in_menu);
+    if walker.head_track.in_slot(Slot::Action).is_some() && !saying {
+        walker.head_track.clear(Slot::Action, true, settings);
+    }
+    let talking = chats.0.contains_key(&me) || (with_player && in_menu);
+    if walker.head_track.in_slot(Slot::Dialog).is_some() && !talking {
+        walker.head_track.clear(Slot::Dialog, true, settings);
+    }
+}
+
+/// One head-track update of an actor (`008a3100`, `world::head_track`):
+/// none farther than `fAIMaxHeadTrackDistanceFromPC` from the player; the
+/// player forgotten as a target once no longer noticed; a target no longer
+/// among the people here forgotten; then the timers, and on them a choice
+/// among the people here.
+///
+/// The candidates' facts come from the viewer: distance and angle from
+/// positions, detection from its detection run ("noticed", standing for the
+/// game's level ≥ 1, an inference), line of sight from its ray cast between
+/// the two (`fighting::clear_between`). The dead aren't among the people
+/// here, so the game's halving for someone down never applies.
+fn choose_head_track(
+    walker: &mut Walker,
+    state: &mut world::scripting::GameState,
+    others: &[crate::fighting::Seen],
+    collision: &physics::Collider,
+    settings: &world::head_track::Settings,
+    chosen_this_frame: &mut u32,
+    dt: f32,
+) {
+    let me = walker.reference;
+    let Some(player) = state.player_position else {
+        return;
+    };
+    if distance(player, walker.position) > settings.max_distance_from_player {
+        return;
+    }
+    if walker.head_track.current() == Some(PLAYER_REF) && !walker.noticed.contains(&PLAYER_REF) {
+        walker.head_track.clear_all();
+    }
+    if let Some(t) = walker.head_track.current() {
+        if !others.iter().any(|o| o.reference == t) {
+            walker.head_track.clear_all();
+        }
+    }
+    let mut dice = crate::fighting::Dice::new(state);
+    let (position, heading) = (walker.position, walker.heading);
+    let noticed = &walker.noticed;
+    let candidates = || -> Vec<Candidate> {
+        others
+            .iter()
+            .filter(|o| o.reference != me)
+            .map(|o| Candidate {
+                reference: o.reference,
+                is_player: o.reference == PLAYER_REF,
+                distance: distance(position, o.position),
+                off_heading: mv::wrap_pi(mv::heading_to(position, o.position) - heading),
+                detected: noticed.contains(&o.reference),
+                in_sight: crate::fighting::clear_between(collision, position, o.position),
+                down: false,
+            })
+            .collect()
+    };
+    walker.head_track.update(
+        dt,
+        settings,
+        chosen_this_frame,
+        &mut || dice.unit(),
+        |current, timer| world::head_track::choose(&candidates(), current, timer, settings),
+    );
+}
+
 /// The body turns to whom they look at (`008a3100`): standing, not
 /// walking, not fighting, not seated, out of dialogue and "use" packages,
 /// when that one is more than 80° off (8° while turning), in place.
 fn look_frame(ctx: &mut Ctx, walker: &mut Walker, fighting: bool, moves: &Moves) {
     let order = &ctx.game.order;
-    let Some((who, until)) = walker.look_at else {
+    let Some(who) = walker.head_track.current() else {
         return;
     };
-    if ctx.now > until {
-        walker.look_at = None;
-        return;
-    }
     let blocked = fighting
         || walker.on_path()
         || ctx.state.sitters.contains_key(&walker.reference)
@@ -2347,6 +2471,39 @@ mod tests {
             &MoveSettings::defaults(),
         );
         w
+    }
+
+    #[test]
+    fn a_scripted_say_to_has_the_speaker_look_at_the_player_then_hold_it() {
+        let s = world::head_track::Settings::default();
+        let (lines, chats) = (Lines::default(), Chats::default());
+        let mut doc = walker();
+        let me = doc.reference;
+        // An earlier choice of their own (no one) set the own slot.
+        doc.head_track.set(Slot::Default, None);
+        // `SayTo Player`: a line said to the player, no menu.
+        head_track_asks(&mut doc, Some(me), false, &lines, &chats, &s);
+        assert_eq!(doc.looking_at(), Some(PLAYER_REF));
+        assert_eq!(doc.head_track.current_slot(), Some(Slot::Action));
+        assert!(!doc.head_track.may_choose());
+        // The line over: kept as their own choice for 10 s.
+        head_track_asks(&mut doc, None, false, &lines, &chats, &s);
+        assert_eq!(doc.looking_at(), Some(PLAYER_REF));
+        assert_eq!(doc.head_track.current_slot(), Some(Slot::Default));
+        assert!(!doc.head_track.may_choose());
+        // The dialogue menu: the DIALOG slot, let go when it closes.
+        head_track_asks(&mut doc, Some(me), true, &lines, &chats, &s);
+        assert_eq!(doc.head_track.current_slot(), Some(Slot::Dialog));
+        head_track_asks(&mut doc, None, false, &lines, &chats, &s);
+        assert_eq!(doc.head_track.current_slot(), Some(Slot::Default));
+        // `bDisableHeadTracking`: the head doesn't follow.
+        let off = world::head_track::Settings {
+            disabled: true,
+            ..s
+        };
+        head_track_asks(&mut doc, None, false, &lines, &chats, &off);
+        assert_eq!(doc.looking_at(), None);
+        assert_eq!(doc.head_track.current(), Some(PLAYER_REF));
     }
 
     #[test]
