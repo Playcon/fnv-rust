@@ -60,7 +60,8 @@ are ruled out; an out-of-range target now leaves the look as it is.
 Whom actors look at is traced too (HEAD_TRACK_TARGET.md): the six-slot
 target stack, `SayTo`/conversation slots and the own-choice chooser are in
 `world::head_track` and the viewer's AI. Before this, a script's `SayTo`
-(Doc in the opening) gave the speaker no look target at all. Core tests pass;
+(Doc in the opening) gave the speaker no look target at all. Eyes dart
+while someone has a target (FaceGen `0064be40`, `world::face`). Core tests pass;
 not yet run with game data or compared in game. Next action: run the
 opening with Doc and compare head tracking, easing and release against
 the original.
