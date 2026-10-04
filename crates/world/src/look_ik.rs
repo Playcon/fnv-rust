@@ -10,14 +10,11 @@
 //! only runs when controller `+0x190` is set, and nothing found in the
 //! executable sets it.
 //!
-//! Not implemented because they are not traced yet (see the topic doc's
-//! "Still open"):
-//! * the extra head rotation at controller `+0xc0`, applied after the solve
-//!   (`00c7aa60`): its value's source is unknown, so none is applied;
-//! * `00c78160`'s below-target smoothing of the target point;
-//! * the object at `(controller+0x2a4)+0x1c` that can override the forward
-//!   and cone axes;
-//! * controller `+0x43`, which can hold the look on or off (`00c75580`).
+//! Three of the controller's inputs never change in this build and so
+//! have no effect: the extra head rotation at `+0xc0` (identity from the
+//! constructor, only ever read), the hold flag `+0x43` (only ever cleared)
+//! and the axis override at `(+0x2a4)+0x1c` (only created while `+0x190`
+//! is set). See the topic doc's "Inputs that never change".
 //!
 //! Space: everything works on a skeleton pose in the skeleton's own space
 //! ("model space", game axes, Z up), as [`nif::anim::posed`] produces it.
@@ -42,6 +39,20 @@ const GAIN: f32 = 1.0;
 const EPSILON: f32 = 0.001;
 
 const IDENTITY: Quat = [1.0, 0.0, 0.0, 0.0];
+
+/// How far to the side of the head the look aims when the target is
+/// behind the actor (`00c78160`: `0101712c`, negated when the target is to
+/// the left), skeleton units.
+const BEHIND_SIDE: f32 = 5.0;
+
+/// How far ahead of the head the look aims while easing out (`00c78160`),
+/// world units.
+const EASE_AHEAD: f32 = 3.0;
+
+/// The stored target is kept within this distance of the head
+/// (`00c78160`, the global `011b05a8`, 5 in the executable's data), world
+/// units.
+const TARGET_REACH: f32 = 5.0;
 
 /// The LookIK settings, with the game's own defaults (the static
 /// initializers at `00fbcdd0` and `00fbd0a0`–`00fbd160`). The INI can
@@ -221,11 +232,12 @@ impl HeadLook {
     /// One update of the actor's choice (`008a3100`): with a target between
     /// `fMinTrackingDist` (exclusive) and `fMaxTrackingDist` (inclusive),
     /// easing stops, the look goes on and aims at the target (`008a3bf0(0)`,
-    /// `00c75580(1)`, `008a3b70`); otherwise a look that is on starts easing
-    /// out (`008a3bf0(1)`), still at the last target.
+    /// `00c75580(1)`, `008a3b70`). A target outside those distances changes
+    /// nothing (`008a3a72`/`008a3a83` jump to the end): the look stays as it
+    /// is, at the point it last stored. With no target, a look that is on
+    /// starts easing out (`008a3bf0(1)`).
     ///
-    /// The game measures the distance between two points of the actors that
-    /// have not been traced; callers give their own.
+    /// The distance is between the two actors' positions (virtual `+0x1f4`).
     pub fn track(&mut self, target: Option<Target>, settings: &Settings) {
         match target {
             Some(t)
@@ -236,7 +248,8 @@ impl HeadLook {
                 self.set_active(true);
                 self.target = t.position;
             }
-            _ => {
+            Some(_) => {}
+            None => {
                 if self.active && !self.easing {
                     self.easing = true;
                 }
@@ -273,6 +286,10 @@ impl HeadLook {
         if bone >= pose.len() || reference >= pose.len() {
             return None;
         }
+        // Where it aims this update (`00c78160`), from the pose the update
+        // starts from.
+        self.target = self.aim(&pose[bone], world_from_model);
+
         let parent = pose[reference];
         let locals = descendant_locals(bones, pose, bone);
         let original_local = parent.inverse().then_child(&pose[bone]);
@@ -335,6 +352,46 @@ impl HeadLook {
             self.active = false;
         }
         Some(step)
+    }
+
+    /// The point the look aims at this update (`00c78160`), given the
+    /// look bone as the update finds it (`head`, skeleton space):
+    ///
+    /// * easing out (`+0xb2`): 3 units ahead of the head along its
+    ///   forward axis, so the head eases back to where the animation has it;
+    /// * else, with the target behind the actor (its y in the skeleton's
+    ///   space below 0; `+0x1a4` records it): 5 skeleton units to the
+    ///   head's right, or left when the target is to the left (x below 0);
+    /// * else the stored target.
+    ///
+    /// Then a point farther than 5 from the head is brought in to 5 along
+    /// the same line. The result is stored, so it is where the look stays
+    /// when nothing updates the target.
+    fn aim(&self, head: &Transform, world_from_model: &Transform) -> Vec3 {
+        let head_world = world_from_model.apply_point(head.translation);
+        let local = world_from_model.inverse().apply_point(self.target);
+        let target = if self.easing {
+            let facing = mat_vec(&head.rotation, self.forward);
+            let ahead = normalize(mat_vec(&world_from_model.rotation, facing));
+            add(head_world, scale(ahead, EASE_AHEAD))
+        } else if local[1] < 0.0 {
+            let side = if local[0] < 0.0 {
+                -BEHIND_SIDE
+            } else {
+                BEHIND_SIDE
+            };
+            let [x, y, z] = head.translation;
+            world_from_model.apply_point([x + side, y, z])
+        } else {
+            self.target
+        };
+        let to = sub(target, head_world);
+        let distance = dot(to, to).sqrt();
+        if distance > TARGET_REACH {
+            add(head_world, scale(to, TARGET_REACH / distance))
+        } else {
+            target
+        }
     }
 
     /// `00c755e0`: from the previous rotation, the change to `new` is cut
@@ -407,6 +464,14 @@ fn transpose(m: &Mat3) -> Mat3 {
         [m[0][1], m[1][1], m[2][1]],
         [m[0][2], m[1][2], m[2][2]],
     ]
+}
+
+fn add(a: Vec3, b: Vec3) -> Vec3 {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn scale(a: Vec3, k: f32) -> Vec3 {
+    [a[0] * k, a[1] * k, a[2] * k]
 }
 
 fn sub(a: Vec3, b: Vec3) -> Vec3 {
@@ -685,33 +750,113 @@ mod tests {
         assert!(angle_between(facing(&look, &pose), MODEL_FORWARD) < ON_TARGET);
     }
 
-    #[test]
-    fn losing_the_target_eases_out_then_turns_the_look_off() {
-        let s = Settings::default();
-        let (bones, mut pose, mut look) = look(60.0);
-        let world = Transform::IDENTITY;
-        look.track(at([50.0, 100.0, 110.0], 112.0), &s);
-        for _ in 0..10 {
-            look.update(&bones, &mut pose, &world, &s);
+    /// Updates `n` times, each on the animation's pose as the game's
+    /// update finds it (here the skeleton's own, every time), returning
+    /// the last result and the pose it left.
+    fn run(
+        look: &mut HeadLook,
+        bones: &[Bone],
+        world: &Transform,
+        s: &Settings,
+        n: usize,
+    ) -> (Option<f32>, Vec<Transform>) {
+        let mut last = (None, model_pose(bones));
+        for _ in 0..n {
+            let mut pose = model_pose(bones);
+            let step = look.update(bones, &mut pose, world, s);
+            last = (step, pose);
         }
+        last
+    }
+
+    #[test]
+    fn losing_the_target_eases_back_to_the_animation_then_turns_the_look_off() {
+        let s = Settings::default();
+        let (bones, _, mut look) = look(60.0);
+        let world = Transform::IDENTITY;
+        // 30° to the right.
+        let target = [
+            100.0 * 30f32.to_radians().sin(),
+            100.0 * 30f32.to_radians().cos(),
+            110.0,
+        ];
+        look.track(at(target, 100.0), &s);
+        let (_, pose) = run(&mut look, &bones, &world, &s, 12);
+        let turned = angle_between(facing(&look, &pose), MODEL_FORWARD);
+        assert!((turned - 30.0).abs() < ON_TARGET, "{turned}");
+
         look.track(None, &s);
         assert!(look.is_easing() && look.is_active());
-        // Still on the last target, nothing more to turn: the step is under
-        // 0.5°, so the look goes off and forgets its rotation.
-        assert_eq!(look.update(&bones, &mut pose, &world, &s), Some(0.0));
+        // Back toward the animation's facing, 1° an update.
+        let (step, pose) = run(&mut look, &bones, &world, &s, 1);
+        assert!((step.unwrap().to_degrees() - 1.0).abs() < 1e-3);
+        let eased = angle_between(facing(&look, &pose), MODEL_FORWARD);
+        assert!((eased - 29.0).abs() < ON_TARGET, "{eased}");
+        // 29 more updates bring it back; the next one has nothing left to
+        // turn, under 0.5°, so the look goes off and forgets its rotation.
+        let (_, pose) = run(&mut look, &bones, &world, &s, 29);
+        assert!(angle_between(facing(&look, &pose), MODEL_FORWARD) < ON_TARGET);
+        assert!(look.is_active());
+        run(&mut look, &bones, &world, &s, 1);
         assert!(!look.is_active() && !look.is_easing());
         assert_eq!(look.previous, Some(IDENTITY));
-        assert_eq!(look.update(&bones, &mut pose, &world, &s), None);
+        assert_eq!(run(&mut look, &bones, &world, &s, 1).0, None);
+    }
+
+    #[test]
+    fn a_target_out_of_range_leaves_the_look_as_it_is() {
+        let s = Settings::default();
+        let (bones, _, mut look) = look(60.0);
+        let world = Transform::IDENTITY;
+        look.track(at([100.0, 100.0, 110.0], 141.0), &s);
+        run(&mut look, &bones, &world, &s, 15);
+        // Too far now: no easing, the look stays on, at the point it kept.
+        look.track(at([5000.0, 0.0, 110.0], 5000.0), &s);
+        assert!(look.is_active() && !look.is_easing());
+        let (_, pose) = run(&mut look, &bones, &world, &s, 5);
+        let to_old = [1.0, 1.0, 0.0];
+        assert!(angle_between(facing(&look, &pose), to_old) < ON_TARGET);
+        // Too near: the same.
+        look.track(at([0.0, 5.0, 110.0], 5.0), &s);
+        assert!(look.is_active() && !look.is_easing());
+    }
+
+    #[test]
+    fn the_kept_target_is_brought_within_five_of_the_head() {
+        let s = Settings::default();
+        let (bones, _, mut look) = look(60.0);
+        let world = Transform::IDENTITY;
+        look.track(at([0.0, 1000.0, 110.0], 1000.0), &s);
+        run(&mut look, &bones, &world, &s, 1);
+        // The head is at (0, 0, 110): the target is 5 in front of it.
+        assert!(near(look.target, [0.0, 5.0, 110.0]), "{:?}", look.target);
+    }
+
+    #[test]
+    fn a_target_behind_is_looked_for_over_the_shoulder_on_its_side() {
+        let s = Settings::default();
+        let (bones, _, mut look) = look(120.0);
+        let world = Transform::IDENTITY;
+        // Behind and a little to the left: the look aims 5 to the head's
+        // left instead, and the head turns 90° that way (the cone allows
+        // 120°), not toward the target itself.
+        look.track(at([-10.0, -100.0, 110.0], 100.0), &s);
+        let (_, pose) = run(&mut look, &bones, &world, &s, 40);
+        assert!(near(look.target, [-5.0, 0.0, 110.0]), "{:?}", look.target);
+        let f = facing(&look, &pose);
+        assert!(angle_between(f, [-1.0, 0.0, 0.0]) < ON_TARGET, "{f:?}");
+        // Behind on the right: 5 to the right.
+        look.track(at([10.0, -100.0, 110.0], 100.0), &s);
+        run(&mut look, &bones, &world, &s, 1);
+        assert!(near(look.target, [5.0, 0.0, 110.0]), "{:?}", look.target);
     }
 
     #[test]
     fn easing_steps_are_the_smaller_limit() {
         let s = Settings::default();
-        let (bones, mut pose, mut look) = look(60.0);
+        let (bones, _, mut look) = look(60.0);
         let world = Transform::IDENTITY;
-        look.track(at([0.0, 100.0, 110.0], 100.0), &s);
-        look.update(&bones, &mut pose, &world, &s);
-        // A new target 40° off, then the target is lost at once.
+        // 40° off; after 4 updates the head is 14° round.
         look.track(
             at(
                 [
@@ -723,9 +868,10 @@ mod tests {
             ),
             &s,
         );
+        run(&mut look, &bones, &world, &s, 4);
         look.track(None, &s);
-        let step = look.update(&bones, &mut pose, &world, &s).unwrap();
-        assert!((step.to_degrees() - 1.0).abs() < 1e-3);
+        let (step, _) = run(&mut look, &bones, &world, &s, 1);
+        assert!((step.unwrap().to_degrees() - 1.0).abs() < 1e-3);
         assert!(look.is_active());
     }
 
