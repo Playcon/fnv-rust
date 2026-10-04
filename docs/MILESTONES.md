@@ -50,6 +50,11 @@ tests/checks pass and the same-cell reload-to-tester route passed live.
 Doc's missing head tracking and exact assist timing remain open; no guessed
 pose correction. Next: native gaze solver, exact camera-transition replay,
 full opening acceptance and in-progress animation save restoration.
+Gaze research (2026-10-04, documentation only): the native LookIK solver,
+per-update step limiter, setting defaults, head cone angle (`BPND` byte 20)
+and on/off rules are traced in OPENING_LOOK_IK.md. Not implemented or
+compared in game. Next action: expose `BPND` byte 20 in `world::body_parts`
+and implement the head pass in `world` with regression tests.
 The original face-menu reference has now
 been inspected; detailed observations are in FACE_CREATION.md.
 
