@@ -64,7 +64,11 @@ target stack, `SayTo`/conversation slots and the own-choice chooser are in
 while someone has a target (FaceGen `0064be40`, `world::face`).
 Face menu groundwork: the race/sex change rules for hair and eyes
 (`007b1ca0`) and the player's chosen race, hair and eyes in the state and
-saves (FACE_CREATION.md); the menu itself is next. Core tests pass;
+saves (FACE_CREATION.md); the menu's pages, clicks and sliders traced
+(RACE_SEX_MENU.md). FaceGen's control file `SI.CTL` is read
+(`nif::Ctl`) and its slider, age and gender maths implemented
+(`world::chargen::facegen`, FACEGEN_CONTROLS.md); the menu itself is
+next. Core tests pass;
 not yet run with game data or compared in game. Next action: run the
 opening with Doc and compare head tracking, easing and release against
 the original.
