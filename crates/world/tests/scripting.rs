@@ -1815,3 +1815,22 @@ fn play_group_has_an_object_play_its_models_sequence() {
         }]
     );
 }
+
+#[test]
+fn the_players_chosen_race_hair_and_eyes_are_saved() {
+    let mut state = GameState::default();
+    let text = world::save::save(&state, None);
+    assert!(!text.contains("\nrace ") && !text.contains("\nhair "));
+    state.player_race = Some(FormId(0x19));
+    state.player_hair = Some(FormId(0x1234));
+    state.player_eyes = Some(FormId(0x4252));
+    let (loaded, _) = world::save::load(&world::save::save(&state, None)).unwrap();
+    assert_eq!(
+        (loaded.player_race, loaded.player_hair, loaded.player_eyes),
+        (
+            Some(FormId(0x19)),
+            Some(FormId(0x1234)),
+            Some(FormId(0x4252))
+        )
+    );
+}

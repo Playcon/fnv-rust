@@ -17,6 +17,7 @@ const DATA: FourCC = FourCC::new(b"DATA");
 const HNAM: FourCC = FourCC::new(b"HNAM");
 const ENAM: FourCC = FourCC::new(b"ENAM");
 const FULL: FourCC = FourCC::new(b"FULL");
+const DNAM: FourCC = FourCC::new(b"DNAM");
 
 /// A selectable race, hairstyle, or eye set. `name` comes only from `FULL`;
 /// it remains `None` when the record has no such subrecord and `Some("")`
@@ -57,6 +58,124 @@ pub fn hair(order: &LoadOrder, race: FormId, female: bool) -> Vec<Choice> {
 /// Menu007af450 uses005fc4d0/005fc5f0; loader005fc220 reads DATA into+0x30.
 pub fn eyes(order: &LoadOrder, race: FormId, female: bool) -> Vec<Choice> {
     choices_for_parts(order, race, female, EYES, ENAM)
+}
+
+/// The race's default hairstyle for a sex (`RACE` `DNAM`: male, then
+/// female; loaded into race `+0x94`/`+0x98` by `00610cd0`, read by
+/// `00613870`). `None` without one.
+pub fn default_hair(order: &LoadOrder, race: FormId, female: bool) -> Option<FormId> {
+    let rr = race_record(order, race)?;
+    let record = rr.record().ok()?;
+    let data = &record.get(DNAM)?.data;
+    let at = if female { 4 } else { 0 };
+    let raw = u32::from_le_bytes(data.get(at..at + 4)?.try_into().ok()?);
+    (raw != 0).then(|| rr.plugin.to_global(FormId(raw)))
+}
+
+/// The race's hair (`HNAM`) or eyes (`ENAM`) list in the order the game
+/// keeps it: each `HNAM`/`ENAM` in turn (one whose length isn't a whole
+/// number of IDs skipped), each ID appended (`00905820` adds at the end)
+/// unless already listed or not a record of that type (logged as "Could
+/// not find hair"/"eyes", `00610cd0`).
+fn race_list(order: &LoadOrder, race: FormId, kind: FourCC, part: FourCC) -> Vec<FormId> {
+    let Some(rr) = race_record(order, race) else {
+        return Vec::new();
+    };
+    let Ok(record) = rr.record() else {
+        return Vec::new();
+    };
+    let mut list = Vec::new();
+    for sub in record.get_all(kind) {
+        if sub.data.is_empty() || sub.data.len() % 4 != 0 {
+            continue;
+        }
+        for bytes in sub.data.chunks_exact(4) {
+            let raw = u32::from_le_bytes(bytes.try_into().expect("four bytes"));
+            if raw == 0 {
+                continue;
+            }
+            let form = rr.plugin.to_global(FormId(raw));
+            let found = order
+                .get(form)
+                .is_some_and(|p| p.entry.header.kind == part && !p.entry.header.is_deleted());
+            if found && !list.contains(&form) {
+                list.push(form);
+            }
+        }
+    }
+    list
+}
+
+/// A hair or eyes record's flags (`DATA`'s byte; `005fdcb0`, `005fc220`):
+/// playable, not for men, not for women.
+fn part_flags(order: &LoadOrder, form: FormId, part: FourCC) -> Option<u8> {
+    let rr = order
+        .get(form)
+        .filter(|rr| rr.entry.header.kind == part && !rr.entry.header.is_deleted())?;
+    let record = rr.record().ok()?;
+    let flags = *record.get(DATA)?.data.first()?;
+    Some(flags)
+}
+
+fn sex_allows(flags: u8, female: bool) -> bool {
+    if female {
+        flags & 4 == 0
+    } else {
+        flags & 2 == 0
+    }
+}
+
+/// Whether a hairstyle suits a race and sex (`005fdfa0`): in the race's
+/// hair list and allowed for the sex (`005fdf60`/`005fdf80`). Playable
+/// isn't asked.
+pub fn hair_fits(order: &LoadOrder, race: FormId, female: bool, hair: FormId) -> bool {
+    part_flags(order, hair, HAIR).is_some_and(|f| sex_allows(f, female))
+        && race_list(order, race, HNAM, HAIR).contains(&hair)
+}
+
+/// Whether eyes suit a race and sex (`005fc5f0`): in the race's eyes list
+/// and allowed for the sex (`005fc530`/`005fc590`). Playable isn't asked.
+pub fn eyes_fit(order: &LoadOrder, race: FormId, female: bool, eyes: FormId) -> bool {
+    part_flags(order, eyes, EYES).is_some_and(|f| sex_allows(f, female))
+        && race_list(order, race, ENAM, EYES).contains(&eyes)
+}
+
+/// After the race or sex changes in the face menu (`007b1ca0`), a
+/// hairstyle and eyes that no longer suit are replaced:
+///
+/// * hair: the race's default for the sex ([`default_hair`], taken as it
+///   is); without one, the first playable hairstyle in the race's list that
+///   the sex allows; without that, none;
+/// * eyes: the first in the race's eyes list, as it is (nothing checked);
+///   none when the list is empty.
+///
+/// Returns the (hair, eyes) to keep.
+pub fn fit_to_race(
+    order: &LoadOrder,
+    race: FormId,
+    female: bool,
+    hair: Option<FormId>,
+    eyes: Option<FormId>,
+) -> (Option<FormId>, Option<FormId>) {
+    let hair = match hair.filter(|&h| hair_fits(order, race, female, h)) {
+        Some(h) => Some(h),
+        None => default_hair(order, race, female).or_else(|| {
+            race_list(order, race, HNAM, HAIR).into_iter().find(|&h| {
+                part_flags(order, h, HAIR).is_some_and(|f| f & 1 != 0 && sex_allows(f, female))
+            })
+        }),
+    };
+    let eyes = match eyes.filter(|&e| eyes_fit(order, race, female, e)) {
+        Some(e) => Some(e),
+        None => race_list(order, race, ENAM, EYES).first().copied(),
+    };
+    (hair, eyes)
+}
+
+fn race_record(order: &LoadOrder, race: FormId) -> Option<RecordRef<'_>> {
+    order
+        .get(race)
+        .filter(|rr| rr.entry.header.kind == RACE && !rr.entry.header.is_deleted())
 }
 
 fn choices_for_parts(
@@ -120,7 +239,7 @@ mod tests {
     use esm::{FormId, LoadOrder, Plugin};
     use testdata::{group, record, sub, zstr};
 
-    use super::{eyes, hair, races};
+    use super::{default_hair, eyes, eyes_fit, fit_to_race, hair, hair_fits, races};
 
     fn plugin(masters: &[&str], groups: &[(&[u8; 4], Vec<u8>)]) -> Plugin {
         let mut header = 1.34f32.to_le_bytes().to_vec();
@@ -183,6 +302,68 @@ mod tests {
             })
             .collect();
         LoadOrder::single("Test.esm", None, plugin(&[], &groups)).unwrap()
+    }
+
+    fn with_default_hair(mut race: Vec<u8>, male: u32, female: u32) -> Vec<u8> {
+        // Appended inside the record: grow its size field by the new field.
+        let mut ids = male.to_le_bytes().to_vec();
+        ids.extend(female.to_le_bytes());
+        let extra = sub(b"DNAM", &ids);
+        let size = u32::from_le_bytes(race[4..8].try_into().unwrap()) + extra.len() as u32;
+        race[4..8].copy_from_slice(&size.to_le_bytes());
+        race.extend(extra);
+        race
+    }
+
+    #[test]
+    fn a_race_change_keeps_what_suits_and_falls_back_as_the_game_does() {
+        let order = one_plugin(&[
+            // Race 0x800: no default hair; its list starts with a hair not
+            // playable, then a female-only one, then one for both.
+            (
+                b"RACE",
+                race(0x800, 1, &[0x813, 0x811, 0x810, 0x810], &[0x821, 0x820]),
+            ),
+            // Race 0x801: a default for each sex (the female one not even
+            // in its list), and no eyes.
+            (
+                b"RACE",
+                with_default_hair(race(0x801, 1, &[0x810], &[]), 0x812, 0x815),
+            ),
+            (b"HAIR", part(b"HAIR", 0x810, Some(1), Some("Both"))),
+            (b"HAIR", part(b"HAIR", 0x811, Some(3), Some("Female only"))),
+            (b"HAIR", part(b"HAIR", 0x812, Some(5), Some("Male only"))),
+            (b"HAIR", part(b"HAIR", 0x813, Some(0), Some("Not playable"))),
+            (b"HAIR", part(b"HAIR", 0x815, Some(1), Some("Not listed"))),
+            (b"EYES", part(b"EYES", 0x820, Some(1), Some("Both"))),
+            (b"EYES", part(b"EYES", 0x821, Some(5), Some("Male only"))),
+        ]);
+        let (r0, r1) = (FormId(0x800), FormId(0x801));
+        assert_eq!(default_hair(&order, r0, false), None);
+        assert_eq!(default_hair(&order, r1, false), Some(FormId(0x812)));
+        assert_eq!(default_hair(&order, r1, true), Some(FormId(0x815)));
+        // Suiting: listed and allowed for the sex; playable isn't asked.
+        assert!(hair_fits(&order, r0, false, FormId(0x813)));
+        assert!(!hair_fits(&order, r0, false, FormId(0x811)));
+        assert!(hair_fits(&order, r0, true, FormId(0x811)));
+        assert!(!eyes_fit(&order, r0, true, FormId(0x821)));
+        // What suits stays.
+        assert_eq!(
+            fit_to_race(&order, r0, true, Some(FormId(0x811)), Some(FormId(0x820))),
+            (Some(FormId(0x811)), Some(FormId(0x820)))
+        );
+        // A man in race 0x800 with female-only hair and no eyes: the first
+        // playable hair he may wear, and the first eyes listed (male-only
+        // ones, taken unchecked).
+        assert_eq!(
+            fit_to_race(&order, r0, false, Some(FormId(0x811)), None),
+            (Some(FormId(0x810)), Some(FormId(0x821)))
+        );
+        // Race 0x801: its default for the sex, as it is; no eyes to give.
+        assert_eq!(
+            fit_to_race(&order, r1, true, Some(FormId(0x812)), Some(FormId(0x820))),
+            (Some(FormId(0x815)), None)
+        );
     }
 
     #[test]
