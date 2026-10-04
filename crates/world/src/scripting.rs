@@ -349,6 +349,12 @@ pub struct GameState {
     /// tag skills (actor values).
     pub player_name: Option<String>,
     pub player_female: Option<bool>,
+    /// The player's race, hairstyle and eyes as chosen in the face menu
+    /// (`RaceSexMenu`, `world::chargen::appearance`); `None` keeps the
+    /// player record's.
+    pub player_race: Option<FormId>,
+    pub player_hair: Option<FormId>,
+    pub player_eyes: Option<FormId>,
     pub tag_skills: BTreeSet<u16>,
     /// Health each person has lost (`world::combat`), and who's dead.
     pub damage: HashMap<FormId, f64>,
@@ -1338,6 +1344,9 @@ impl Facts<'_> {
         if reference == PLAYER_REF {
             if let Some(female) = self.state.player_female {
                 s.female = female;
+            }
+            if let Some(race) = self.state.player_race {
+                s.race = Some(race);
             }
         }
         Some(s)

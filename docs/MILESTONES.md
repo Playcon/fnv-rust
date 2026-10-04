@@ -61,7 +61,10 @@ Whom actors look at is traced too (HEAD_TRACK_TARGET.md): the six-slot
 target stack, `SayTo`/conversation slots and the own-choice chooser are in
 `world::head_track` and the viewer's AI. Before this, a script's `SayTo`
 (Doc in the opening) gave the speaker no look target at all. Eyes dart
-while someone has a target (FaceGen `0064be40`, `world::face`). Core tests pass;
+while someone has a target (FaceGen `0064be40`, `world::face`).
+Face menu groundwork: the race/sex change rules for hair and eyes
+(`007b1ca0`) and the player's chosen race, hair and eyes in the state and
+saves (FACE_CREATION.md); the menu itself is next. Core tests pass;
 not yet run with game data or compared in game. Next action: run the
 opening with Doc and compare head tracking, easing and release against
 the original.

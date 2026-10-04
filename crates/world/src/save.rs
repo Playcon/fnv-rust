@@ -205,6 +205,15 @@ pub fn save(state: &GameState, player: Option<PlayerPlace>) -> String {
     if let Some(female) = state.player_female {
         line(format!("female {}", u8::from(female)));
     }
+    for (key, form) in [
+        ("race", state.player_race),
+        ("hair", state.player_hair),
+        ("eyes", state.player_eyes),
+    ] {
+        if let Some(f) = form {
+            line(format!("{key} {}", id(f)));
+        }
+    }
     let ranks: BTreeMap<_, _> = state.perk_ranks.iter().collect();
     for (p, r) in ranks {
         line(format!("perkrank {} {r}", id(*p)));
@@ -531,6 +540,9 @@ pub fn load(text: &str) -> Result<(GameState, Option<PlayerPlace>), String> {
             "modifier" => state.modifiers.push(form(1)?),
             "name" => state.player_name = Some(raw.trim_start()[4..].trim().to_string()),
             "female" => state.player_female = Some(num(1)? != 0.0),
+            "race" => state.player_race = Some(form(1)?),
+            "hair" => state.player_hair = Some(form(1)?),
+            "eyes" => state.player_eyes = Some(form(1)?),
             "tag" => {
                 state.tag_skills.insert(num(1)? as u16);
             }

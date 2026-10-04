@@ -50,6 +50,38 @@ persist only player_name/player_female for identity, no editable race/hair/
 eyes/morphs. Menu creation needs those fields, selection rules, a preview
 and native XML callbacks before replacing the current face auto-accept.
 
+The menu's pages, items, clicks and sliders: [RACE_SEX_MENU.md](RACE_SEX_MENU.md).
+
+## Race and sex changes (traced 2026-10-04)
+
+`007b1ca0` runs after the race or sex changes (menu `+0xd8` is the
+player's base NPC):
+
+* Hair is kept when it suits (`005fdfa0`: in the race's hair list and
+  allowed for the sex; playable isn't asked). Otherwise the race's default
+  for the sex (`00613870`: race `+0x94` male, `+0x98` female, from `RACE`
+  `DNAM`'s two IDs, `00610cd0` case `DNAM`), taken as it is; only when there
+  is none, the first hairstyle in the race's hair list (`+0x8c`, walked from
+  its head) that is playable (`005fdf40`) and allowed for the sex; else none
+  (`006031e0`), then the head is rebuilt (`007b2b50(1)`).
+* Eyes are kept when they suit (`005fc5f0`: in the race's eyes list and
+  allowed for the sex). Otherwise the first entry of the race's eyes list
+  (`007b1e50`: race `+0xa8`), unchecked; none when it is empty
+  (`00603200`, `007b27c0` rebuilds the eyes).
+* Tiles 0 and 1 are marked for refresh (`007adc60`, bits of `+0xec`).
+
+The race's hair and eyes lists keep record order: `00610cd0` reads each
+`HNAM`/`ENAM` (skipping one whose length isn't a multiple of 4), drops IDs
+that aren't hair/eyes ("MASTERFILE: Could not find hair (%08X) for race"),
+and appends with `00613810`/`00613910` → `00905820`, which adds at the tail
+and skips an ID already listed.
+
+Implemented as `world::chargen::appearance::{default_hair, hair_fits,
+eyes_fit, fit_to_race}`; `GameState` keeps the player's chosen race, hair
+and eyes (`player_race`, `player_hair`, `player_eyes`, saved as `race`,
+`hair`, `eyes` lines), and the player's race in dialogue conditions follows
+`player_race`. No menu sets them yet.
+
 ## Implemented and checked
 
 `world::chargen::appearance::{races,hair,eyes}` enumerates eligible choices
