@@ -11,6 +11,25 @@ the executable or any part of it, decompiled code, disassembly, Ghidra
 projects or exports (CONTRIBUTING.md). Keep those in a private folder or
 repository of your own.
 
+## TL;DR for the next person
+
+* **Where this picked up.** M1 (the opening) was already under way: rendering, animation and
+  scripts worked. The game's look/eye behaviour and the face menu were missing, and there was
+  no shared way to read the original executable.
+* **What was done.**
+  * The executable was decompiled in a separate private repository.
+  * Research tools were written (this folder's `tools/re/`).
+  * The executable was traced and rebuilt here in stacked pull requests #1–#7 and #9:
+    * head turning (LookIK solver, look anchor, aim point, release);
+    * whom actors look at (this fixes Doc never looking at the player on his scripted lines);
+    * eye darting;
+    * face menu groundwork and its full trace;
+    * FaceGen's `SI.CTL` slider, age and gender maths.
+  * Each has a write-up in `docs/` and tests. All were green on CI when last checked; none
+    has been merged or compared in game yet.
+* **What's next.** Merge #1 → #7 → #9 (#8 is independent). Then compare the look behaviour
+  in the original game. Then build the face menu on the game's XML (Next steps below).
+
 ## Setup
 
 1. Decrypt your own `FalloutNV.exe` with
