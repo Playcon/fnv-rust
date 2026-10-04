@@ -24,6 +24,7 @@ pub mod anim;
 mod blocks;
 pub mod camera;
 pub mod collision;
+pub mod ctl;
 pub mod egm;
 mod error;
 mod file;
@@ -49,6 +50,7 @@ pub use blocks::{
     ZBufferProperty,
 };
 pub use collision::{Collision, CollisionPart, CollisionShape};
+pub use ctl::Ctl;
 pub use egm::Egm;
 pub use error::{Error, Result};
 pub use file::{BlockInfo, Nif};

@@ -126,16 +126,17 @@ Tone (0x23), page 19, in this order, symmetric texture controls: 29
 `sEyebrows`, 18 `sEyeliner`, 27 `sNose`, 22 `sLips`, 5 `sRSMToneOption06`,
 6 `sCheeks`, 3 `sBeard`; all with the default range.
 
-The controls themselves (which coefficients each moves) are FaceGen's,
-from the game's FaceGen data; not traced here.
+The controls themselves, their file and how a value is read and set:
+[FACEGEN_CONTROLS.md](FACEGEN_CONTROLS.md). A slider change sets its
+control to the slider's integer / 10 (`007af770`); the menu lists the shape
+controls below `006521b0`, the count minus one.
 
 ## Still open
 
 * `007af300`/`007af450` list order and contents beyond the predicates in
   FACE_CREATION.md; `007af520` (page 3); `007af6b0`; `007b4530`.
-* Randomize (`007b51f0`), the preset faces (`00877a30`), hair colour
-  (`007af900`), the FaceGen control evaluation (`00652230`,
-  `00652470`, `007af770`) and the control data it reads.
+* Randomize (`007b51f0`, partly traced in FACEGEN_CONTROLS.md), the
+  preset faces (`00877a30`), hair colour (`007af900`).
 * Keys (`007aecb0`, virtual 14), the update (`007ae420`, virtual 11), the
   closing confirmation (`007ada40`) and what closing commits.
 * The preview (camera, rotation, lighting).

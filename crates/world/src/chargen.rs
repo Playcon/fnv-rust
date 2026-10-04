@@ -25,6 +25,7 @@ use esm::{FormId, FourCC, LoadOrder};
 use crate::scripting::{game_setting, GameState};
 
 pub mod appearance;
+pub mod facegen;
 
 const PERK: FourCC = FourCC::new(b"PERK");
 const DESC: FourCC = FourCC::new(b"DESC");
