@@ -46,6 +46,8 @@ Project: current checkout, Windows/PowerShell is the tested platform.
 Game Data: the contributor's own installed Data folder; never commit it.
 Reference cell: GSDocMitchellHouse. GPU: RTX 5070 Ti Laptop, Vulkan.
 Research/tools: `%USERPROFILE%\nv-re`, especially findings and decomp.
+Shared research tools (`tools/re/`), setup, method and topic handoff:
+`docs/RESEARCH_TOOLS.md`.
 Read the archive's Ghidra/recording sections when needed.
 
 Inspect Git status before edits. Use a branch and pull request;
