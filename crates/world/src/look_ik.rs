@@ -92,9 +92,44 @@ impl Settings {
     }
 }
 
+/// The bone an actor's look anchor is (`Actor` virtual `+0x194`,
+/// `008a2fa0`): a character's bone cache (`Character +0x1b4`, filled by
+/// `004aad00` from the names at `01188b74`) has `Bip01 Head` first, and a
+/// creature's is found by that name (`011c61ac`) through its
+/// `NiControllerManager`'s object palette.
+pub const ANCHOR_BONE: &str = "Bip01 Head";
+
+/// How far up an actor without that bone is looked at, as a share of its
+/// height (`008a30a9`, the double at `0106b9e8`).
+pub const ANCHOR_HEIGHT_SHARE: f32 = 0.9;
+
+/// Where an actor other than the player is looked at (`008a2fa0`): its
+/// `Bip01 Head` (`head`, world space) when it has one, else `position`
+/// raised by 0.9 × `height` (see [`actor_height`]).
+///
+/// The game can replace the head's z with the look controller's own head
+/// (`00c757b0`), but only when controller `+0x190` is set, which nothing
+/// in the executable does, so that is left out.
+pub fn anchor(head: Option<Vec3>, position: Vec3, height: f32) -> Vec3 {
+    head.unwrap_or([
+        position[0],
+        position[1],
+        position[2] + ANCHOR_HEIGHT_SHARE * height,
+    ])
+}
+
+/// An actor's height for [`anchor`] (`008853a0`): the z extent of its
+/// bounds (virtual `+0x1dc` max less `+0x1d8` min, the character
+/// controller's when it has one) times its scale (`00567400`: the
+/// reference's scale times the NPC's height, `TESNPC +0x1f4`, or the
+/// creature's scale). The process caches it (`+0x42c`).
+pub fn actor_height(bound_min_z: f32, bound_max_z: f32, scale: f32) -> f32 {
+    (bound_max_z - bound_min_z) * scale
+}
+
 /// Whom the actor looks at this update: where their look anchor is (game
-/// world space; the game asks the target for it, its virtual `+0x194`) and
-/// how far away they are.
+/// world space; the game asks the target for it, its virtual `+0x194`, see
+/// [`anchor`]) and how far away they are.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Target {
     pub position: Vec3,
@@ -451,6 +486,19 @@ mod tests {
             bone("Bip01 Head", Some(1), [0.0, 0.0, 10.0]),
             bone("Bip01 Eye", Some(2), [0.0, 5.0, 5.0]),
         ]
+    }
+
+    #[test]
+    fn the_anchor_is_the_head_else_nine_tenths_up() {
+        let feet = [10.0, 20.0, 30.0];
+        assert_eq!(anchor(Some([1.0, 2.0, 3.0]), feet, 128.0), [1.0, 2.0, 3.0]);
+        let height = actor_height(-4.0, 124.0, 1.0);
+        assert_eq!(height, 128.0);
+        let up = anchor(None, feet, height);
+        assert_eq!(&up[..2], &feet[..2]);
+        assert!((up[2] - (30.0 + 0.9 * 128.0)).abs() < 1e-4);
+        // Scaled up, taller.
+        assert!((actor_height(0.0, 100.0, 1.1) - 110.0).abs() < 1e-3);
     }
 
     fn model_pose(bones: &[Bone]) -> Vec<Transform> {

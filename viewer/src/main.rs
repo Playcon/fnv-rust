@@ -178,6 +178,7 @@ fn main() {
         .insert_resource(actors::AnimSettings::read(&game.settings))
         .insert_resource(look::LookSettings::read(&game.settings))
         .init_resource::<look::PlayerAnchor>()
+        .init_resource::<look::HeadAnchors>()
         .insert_resource(ai::Moves::new(&game))
         .insert_resource(ai::CellBuffer::new(&game))
         .insert_resource(GameFiles(game))
