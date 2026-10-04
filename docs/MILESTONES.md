@@ -53,7 +53,10 @@ full opening acceptance and in-progress animation save restoration.
 Gaze (2026-10-04): the native LookIK head chain is traced
 (OPENING_LOOK_IK.md) and implemented in `world::look_ik`, with the viewer
 turning heads toward the player and toward other actors' `Bip01 Head`
-(`Actor` look anchor `008a2fa0`, traced; `viewer/src/look.rs`). Core tests pass;
+(`Actor` look anchor `008a2fa0`, traced; `viewer/src/look.rs`). The aim
+point (`00c78160`: over-the-shoulder for targets behind, ease back to the
+animation, 5-unit reach) is implemented and three never-changing inputs
+are ruled out; an out-of-range target now leaves the look as it is. Core tests pass;
 not yet run with game data or compared in game. Next action: run the
 opening with Doc and compare head tracking, easing and release against
 the original.

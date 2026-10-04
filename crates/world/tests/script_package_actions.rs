@@ -4,8 +4,11 @@ use esm::{ActivePlugins, FormId, LoadOrder};
 use testdata::functions::ids::{ADULT_REF, CUP_REF, SANDBOX, TRAVEL};
 use world::scripting::{Event, GameState, PackageActionKind, Runner, ScriptCache};
 
-fn order() -> (testdata::TempData, LoadOrder) {
-    let data = testdata::functions::functions("script-package-actions");
+/// Each test its own data folder (`tag`): the tests run on parallel
+/// threads of one process, and a folder named by the process alone was
+/// removed by one test while another was still reading it.
+fn order(tag: &str) -> (testdata::TempData, LoadOrder) {
+    let data = testdata::functions::functions(&format!("script-package-actions-{tag}"));
     let order = LoadOrder::from_data_dir(data.path(), &ActivePlugins::OfficialOnly).unwrap();
     (data, order)
 }
@@ -24,7 +27,7 @@ fn action(who: u32, package: u32, kind: PackageActionKind) -> Event {
 
 #[test]
 fn add_requests_begin_then_previous_change_even_for_same_package() {
-    let (_data, order) = order();
+    let (_data, order) = order("add");
     let mut state = GameState::new(&order);
     let who = ADULT_REF;
 
@@ -65,7 +68,7 @@ fn add_requests_begin_then_previous_change_even_for_same_package() {
 
 #[test]
 fn a_non_package_form_leaves_package_state_and_events_untouched() {
-    let (_data, order) = order();
+    let (_data, order) = order("not-a-package");
     let mut state = GameState::new(&order);
     state
         .script_packages
@@ -94,7 +97,7 @@ fn a_non_package_form_leaves_package_state_and_events_untouched() {
 
 #[test]
 fn only_actor_targets_receive_package_requests_and_the_player_is_an_actor() {
-    let (_data, order) = order();
+    let (_data, order) = order("actors");
     let mut state = GameState::new(&order);
 
     run(&order, &mut state, "CupRef.AddScriptPackage TestTravel");
@@ -115,7 +118,7 @@ fn only_actor_targets_receive_package_requests_and_the_player_is_an_actor() {
 
 #[test]
 fn player_package_blocks_looking_independently_of_controls_and_survives_save() {
-    let (_data, order) = order();
+    let (_data, order) = order("player");
     let mut state = GameState::new(&order);
     run(&order, &mut state, "AdultRef.AddScriptPackage TestTravel");
     assert!(!state.player_looking_blocked());
