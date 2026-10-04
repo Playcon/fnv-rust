@@ -30,6 +30,49 @@ repository of your own.
 * **What's next.** Merge #1 → #7 → #9 (#8 is independent). Then compare the look behaviour
   in the original game. Then build the face menu on the game's XML (Next steps below).
 
+## Working locally
+
+Everything shared lives in this repository: the code, the write-ups in `docs/`, the
+tools in `tools/re/`, and this handoff. The maintainer's decompilation is a separate,
+personal repository that is never shared or merged into this one. Only the tools' default
+paths point at it.
+
+First time, in PowerShell (any folder; the examples use your user folder):
+
+```powershell
+cd $env:USERPROFILE
+git clone https://github.com/zzxxbartfiolxxzz-design/fnv-rust   # or, in an existing clone: git fetch origin
+cd fnv-rust
+git checkout claude/facegen-controls     # the top of the stack: contains #1-#7 and #9
+cargo test --workspace                   # core checks; the viewer builds from viewer\
+```
+
+The research tools need Python 3.8+ and Capstone. They read your own Steamless-decrypted
+executable; the decompiled export is optional:
+
+```powershell
+py -m pip install -r tools\re\requirements.txt
+$env:FNV_EXE = "$env:USERPROFILE\work\FalloutNV.unpacked.exe"   # where Steamless put it
+$env:FNV_DECOMP = "$env:USERPROFILE\Decompiling-FNV\decomp"     # optional: your own export
+py tools\re\disasm.py 009016a0     # should list DEFAULT ACTION SCRIPT COMBAT DIALOG
+```
+
+Without `FNV_EXE`, the tools look in `..\work\FalloutNV.unpacked.exe` next to the clone.
+Without `FNV_DECOMP`, they look in `..\Decompiling-FNV\decomp`; if that is missing too,
+callees stay unnamed but strings and settings are still shown.
+
+Each new step: make a branch on top of the stack (`git checkout -b <topic>
+claude/facegen-controls`), then trace, write up in `docs/`, implement with a test, and run
+the checks in `AGENTS.md`. Push with `git push -u origin <topic>` and open a pull request
+using the template.
+
+Not yet done:
+
+* None of the look, eye or face work has been compared in the original game.
+* `SI.CTL` has not been checked against the real file (counts, labels, end of file).
+* One viewer test (vigor) fails on Linux and passes on Windows CI; this predates the
+  work here.
+
 ## Setup
 
 1. Decrypt your own `FalloutNV.exe` with
