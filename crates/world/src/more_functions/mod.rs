@@ -20,6 +20,7 @@ pub mod actors;
 pub mod carried;
 pub mod challenges;
 pub mod destruction;
+pub mod menus;
 pub mod placed;
 pub mod procedures;
 pub mod radio;
@@ -74,6 +75,19 @@ pub enum Shown {
     },
     /// `FireWeapon`: a placed object fires a weapon ([`traps::shot_from`]).
     WeaponFired { from: FormId, weapon: FormId },
+    /// `ShowRecipeMenu`: the recipe (crafting) menu, sold by `vendor`,
+    /// maybe for one category (`RCCT`).
+    RecipeMenu {
+        vendor: FormId,
+        category: Option<FormId>,
+    },
+    /// A casino game's menu, with its casino (`CSNO`) and the script's
+    /// three numbers.
+    CasinoMenu {
+        game: menus::CasinoGame,
+        casino: FormId,
+        numbers: [i32; 3],
+    },
     /// `ForceTerminalBack`: the terminal goes back a screen, or closes
     /// from its first.
     TerminalBack,
@@ -290,6 +304,15 @@ pub fn describe(order: &LoadOrder, state: &GameState, shown: &Shown) -> String {
         Shown::WeaponFired { from, weapon } => {
             format!("{} fires {}", name(*from), name(*weapon))
         }
+        Shown::RecipeMenu { vendor, category } => match category {
+            Some(c) => format!("{} opens the recipe menu ({})", name(*vendor), name(*c)),
+            None => format!("{} opens the recipe menu", name(*vendor)),
+        },
+        Shown::CasinoMenu {
+            game,
+            casino,
+            numbers,
+        } => format!("{game:?} at {} ({numbers:?})", name(*casino)),
         Shown::Destruction {
             what,
             stage,
@@ -443,6 +466,7 @@ pub fn handled() -> impl Iterator<Item = &'static str> {
         .chain(carried::FUNCTIONS)
         .chain(actors::FUNCTIONS)
         .chain(traps::FUNCTIONS)
+        .chain(menus::FUNCTIONS)
         .chain(crate::sight::FUNCTIONS)
         .copied()
 }
@@ -976,6 +1000,9 @@ pub(crate) fn change(
     }
     if traps::FUNCTIONS.contains(&name) {
         return Some(traps::carry_out(runner, name, target, args));
+    }
+    if menus::FUNCTIONS.contains(&name) {
+        return Some(menus::carry_out(runner, name, target, args));
     }
     if shaders::CHANGES.contains(&name) {
         return Some(shaders::carry_out(runner, name, target, args));

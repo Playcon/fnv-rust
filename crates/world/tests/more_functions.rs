@@ -1287,3 +1287,83 @@ fn facing_up_as_the_viewer_reports_it() {
     assert_eq!(q(&mut state, "PersonRef.IsFacingUp"), 0.0);
     assert_eq!(q(&mut state, "DogRef.IsFacingUp"), 1.0);
 }
+
+#[test]
+fn recipe_and_casino_menus_open_with_their_data() {
+    use more::menus::{self, CasinoGame};
+    let (_data, order) = order("more-menus");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let has = |state: &GameState, e: Event| state.events.contains(&e);
+
+    // The recipe menu, sold by the player, then by a talking activator's
+    // speaker; an ordinary object sells nothing.
+    run(&order, &scripts, &mut state, "player.ShowRecipeMenu");
+    assert!(has(
+        &state,
+        Event::More(Shown::RecipeMenu {
+            vendor: PLAYER_REF,
+            category: None,
+        })
+    ));
+    assert!(has(&state, Event::Menu(menus::RECIPE_MENU)));
+    state.events.clear();
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "TalkerRef.SetTalkingActivatorActor PersonRef\nTalkerRef.ShowRecipeMenu",
+    );
+    assert!(has(
+        &state,
+        Event::More(Shown::RecipeMenu {
+            vendor: FormId(PERSON_REF),
+            category: None,
+        })
+    ));
+    state.events.clear();
+    assert_eq!(
+        ask(&order, &scripts, &mut state, "BarrelRef.ShowRecipeMenu"),
+        1.0
+    );
+    assert!(!has(&state, Event::Menu(menus::RECIPE_MENU)));
+
+    // A casino game with its casino and numbers; without a casino, nothing.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "ShowSlotMachineMenuParams TestCasino 1 25 0",
+    );
+    assert!(has(
+        &state,
+        Event::More(Shown::CasinoMenu {
+            game: CasinoGame::SlotMachine,
+            casino: FormId(CASINO),
+            numbers: [1, 25, 0],
+        })
+    ));
+    assert!(has(&state, Event::Menu(1080)));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "ShowBlackJackMenuParams TestCasino 1 200 0",
+    );
+    assert!(has(&state, Event::Menu(1081)));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "ShowRouletteMenuParams TestCasino 1 100 0",
+    );
+    assert!(has(&state, Event::Menu(1082)));
+    state.events.clear();
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "ShowRouletteMenuParams TestGun 1 100 0",
+    );
+    assert!(state.events.is_empty());
+}

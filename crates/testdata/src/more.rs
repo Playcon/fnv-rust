@@ -80,6 +80,8 @@ pub mod ids {
     pub const TICK_POISON: u32 = 0xE1D;
     /// A weapon (`WEAP`, no data) for `FireWeapon`.
     pub const GUN: u32 = 0xE1E;
+    /// A casino (`CSNO`, no data) for the casino games' menus.
+    pub const CASINO: u32 = 0xE1F;
 }
 
 /// The world, written as `FalloutNV.esm` into a temporary Data folder.
@@ -343,6 +345,11 @@ pub fn more(tag: &str) -> TempData {
     spells.extend(named(b"SPEL", TICK_POISON, "TestTickPoison", &typed(5)));
     plugin.extend(group(*b"SPEL", 0, &spells));
     plugin.extend(group(*b"WEAP", 0, &named(b"WEAP", GUN, "TestGun", &[])));
+    plugin.extend(group(
+        *b"CSNO",
+        0,
+        &named(b"CSNO", CASINO, "TestCasino", &[]),
+    ));
 
     // The room.
     let thing = |kind: &[u8; 4],

@@ -467,6 +467,41 @@ nvinspect: 195 of 199.
 yet; a ragdoll asleep keeps its last report. The player isn't reported (counts as no 3D:
 1). Nothing compared in the original game.
 
+## Crafting and casino menus (`ShowRecipeMenu`, `Show…MenuParams`)
+
+6 calls.
+* The Sierra Madre vending machines' scripts (`CraftingVendingMachineRecipesScript`,
+  `NVDLC01CraftingMachineRecipeOFFScript`) call `player.ShowRecipeMenu
+  NVDLC01VendingMachineRecipes`.
+* The casino's tables call `ShowSlotMachineMenuParams SierraMadreCasinoData 1 25 0`,
+  `ShowBlackjackMenuParams … 1 200 0` and `ShowRouletteMenuParams … 1 100 0`, unless the
+  player is banned (`NVDLC01CasinoComps.bBanned`).
+
+**traced**:
+
+* `ShowRecipeMenu` (`005deb10`): the vendor is the person the script runs on. For a
+  talking activator, the vendor is its base's speaker (+0x90), when the reference's
+  +0x81 is set. The category (`RCCT`) is optional. `00704fc0` → `00726ff0` opens
+  `Data\Menus\recipe_menu.xml` as menu 1077 (`007273e0`) with the vendor and category.
+  With no vendor, the game prints "Recipe menu called with NULL vendor!  Oh, noes!".
+* `ShowSlotMachineMenuParams` (`005cf040`), `ShowBlackJackMenuParams` (`005cf0f0`) and
+  `ShowRouletteMenuParams` (`005cf1a0`) each take a casino (`CSNO`) and three numbers. They
+  hand them to the game's menu: slots `007c0a40` (menu 1080), blackjack `00733630`
+  (1081), roulette `007bbe20` (1082). Each menu keeps them in its globals. With no casino,
+  the game prints an "Invalid EditorFormID" line; the roulette handler's message names
+  blackjack.
+
+**in code**: `crates/world/src/more_functions/menus.rs` sends `Shown::RecipeMenu` or
+`Shown::CasinoMenu`, then the menu's number (`Event::Menu`). The viewer counts each as
+opened and closed at once, so the scripts' `MenuMode` blocks run. Test:
+`recipe_and_casino_menus_open_with_their_data`. nvinspect: 199 of 199.
+
+**Not done**: nv-rs has no crafting (recipes `RCPE`, categories `RCCT`, the recipe menu)
+and no casino games (slots, blackjack, roulette, the `CSNO` data, winnings), so nothing
+can be crafted or played yet. That is a separate piece of work, larger than a function.
+What the three numbers mean in each game isn't traced; the reference's +0x81 check for
+talking activators is taken to be met. Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?
