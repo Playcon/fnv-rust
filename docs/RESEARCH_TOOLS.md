@@ -41,7 +41,7 @@ First time, in PowerShell (any folder; the examples use your user folder):
 
 ```powershell
 cd $env:USERPROFILE
-git clone https://github.com/zzxxbartfiolxxzz-design/fnv-rust   # or, in an existing clone: git fetch origin
+git clone https://github.com/Playcon/fnv-rust   # or, in an existing clone: git fetch origin
 cd fnv-rust
 git checkout claude/facegen-controls     # the top of the stack: contains #1-#7 and #9
 cargo test --workspace                   # core checks; the viewer builds from viewer\
