@@ -134,18 +134,7 @@ pub fn run(stmts: &[Stmt], locals: &mut Locals, host: &mut dyn Host) -> Flow {
                 let Some(v) = eval(value, locals, host) else {
                     return Flow::Stopped;
                 };
-                match target.as_slice() {
-                    [name] => {
-                        if !locals.set(name, v) {
-                            // Not a local: perhaps a global.
-                            host.set_var("", name, v, locals);
-                        }
-                    }
-                    [owner, name] => {
-                        host.set_var(owner, name, v, locals);
-                    }
-                    _ => {}
-                }
+                set(target, v, locals, host);
             }
             Stmt::If {
                 branches,
@@ -182,7 +171,81 @@ pub fn run(stmts: &[Stmt], locals: &mut Locals, host: &mut dyn Host) -> Flow {
     Flow::Done
 }
 
-fn call_function(call: &Call, locals: &mut Locals, host: &mut dyn Host) -> Option<f64> {
+/// `set <target> to <value>`: a local (whole numbers truncated), else a
+/// global; or another script's variable (`[owner, name]`).
+pub fn set<S: AsRef<str>>(target: &[S], v: f64, locals: &mut Locals, host: &mut dyn Host) {
+    match target {
+        [name] => {
+            let name = name.as_ref();
+            if !locals.set(name, v) {
+                // Not a local: perhaps a global.
+                host.set_var("", name, v, locals);
+            }
+        }
+        [owner, name] => {
+            host.set_var(owner.as_ref(), name.as_ref(), v, locals);
+        }
+        _ => {}
+    }
+}
+
+/// A variable's value: a local, else whatever the host makes of the word
+/// (`[name]`); or another script's (`[owner, name]`). Unknown ones are 0.
+pub fn var<S: AsRef<str>>(path: &[S], locals: &mut Locals, host: &mut dyn Host) -> f64 {
+    match path {
+        [name] => {
+            let name = name.as_ref();
+            locals
+                .get(name)
+                .or_else(|| host.resolve(name))
+                .unwrap_or(0.0)
+        }
+        [owner, name] => host
+            .get_var(owner.as_ref(), name.as_ref(), locals)
+            .unwrap_or(0.0),
+        _ => 0.0,
+    }
+}
+
+/// An operator applied to the value(s) before it: `y` is the top one, `x`
+/// the one below (ignored by the unary ones). Comparisons and logic give 1
+/// or 0; dividing by 0 gives 0.
+pub fn apply(op: Op, x: f64, y: f64) -> f64 {
+    let flag = |b: bool| if b { 1.0 } else { 0.0 };
+    match op {
+        Op::Neg => -y,
+        Op::Not => flag(y == 0.0),
+        Op::Or => flag(x != 0.0 || y != 0.0),
+        Op::And => flag(x != 0.0 && y != 0.0),
+        Op::Eq => flag(x == y),
+        Op::Ne => flag(x != y),
+        Op::Lt => flag(x < y),
+        Op::Le => flag(x <= y),
+        Op::Gt => flag(x > y),
+        Op::Ge => flag(x >= y),
+        Op::Add => x + y,
+        Op::Sub => x - y,
+        Op::Mul => x * y,
+        Op::Div => {
+            if y == 0.0 {
+                0.0
+            } else {
+                x / y
+            }
+        }
+        Op::Mod => {
+            if y == 0.0 {
+                0.0
+            } else {
+                (x as i64 % y as i64) as f64
+            }
+        }
+    }
+}
+
+/// Calls a function on the reference it names (a `ref` variable, else
+/// whatever the host makes of the word), or on the script's owner.
+pub fn call_function(call: &Call, locals: &mut Locals, host: &mut dyn Host) -> Option<f64> {
     let on = call.on.as_ref().and_then(|word| {
         // A ref variable, else whatever the host makes of the word.
         locals
@@ -202,54 +265,18 @@ fn call_function(call: &Call, locals: &mut Locals, host: &mut dyn Host) -> Optio
 /// ones left below. `None` when a function's value can't be worked out.
 /// Unknown words and variables are 0.
 pub fn eval(e: &Expr, locals: &mut Locals, host: &mut dyn Host) -> Option<f64> {
-    let flag = |b: bool| if b { 1.0 } else { 0.0 };
     let mut stack: Vec<f64> = Vec::with_capacity(e.0.len());
     for item in &e.0 {
         let value = match item {
             Item::Number(n) => *n,
             Item::Str(_) => 0.0,
-            Item::Var(path) => match path.as_slice() {
-                [name] => locals
-                    .get(name)
-                    .or_else(|| host.resolve(name))
-                    .unwrap_or(0.0),
-                [owner, name] => host.get_var(owner, name, locals).unwrap_or(0.0),
-                _ => 0.0,
-            },
+            Item::Var(path) => var(path, locals, host),
             Item::Call(call) => call_function(call, locals, host)?,
-            Item::Op(Op::Neg) => -stack.pop().unwrap_or(0.0),
-            Item::Op(Op::Not) => flag(stack.pop().unwrap_or(0.0) == 0.0),
+            Item::Op(op @ (Op::Neg | Op::Not)) => apply(*op, 0.0, stack.pop().unwrap_or(0.0)),
             Item::Op(op) => {
                 let y = stack.pop().unwrap_or(0.0);
                 let x = stack.pop().unwrap_or(0.0);
-                match op {
-                    Op::Or => flag(x != 0.0 || y != 0.0),
-                    Op::And => flag(x != 0.0 && y != 0.0),
-                    Op::Eq => flag(x == y),
-                    Op::Ne => flag(x != y),
-                    Op::Lt => flag(x < y),
-                    Op::Le => flag(x <= y),
-                    Op::Gt => flag(x > y),
-                    Op::Ge => flag(x >= y),
-                    Op::Add => x + y,
-                    Op::Sub => x - y,
-                    Op::Mul => x * y,
-                    Op::Div => {
-                        if y == 0.0 {
-                            0.0
-                        } else {
-                            x / y
-                        }
-                    }
-                    Op::Mod => {
-                        if y == 0.0 {
-                            0.0
-                        } else {
-                            (x as i64 % y as i64) as f64
-                        }
-                    }
-                    Op::Neg | Op::Not => unreachable!("handled above"),
-                }
+                apply(*op, x, y)
             }
         };
         stack.push(value);

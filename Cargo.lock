@@ -97,6 +97,14 @@ name = "script"
 version = "0.1.0"
 
 [[package]]
+name = "scriptgen"
+version = "0.1.0"
+dependencies = [
+ "esm",
+ "script",
+]
+
+[[package]]
 name = "shaders"
 version = "0.1.0"
 
