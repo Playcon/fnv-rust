@@ -31,3 +31,6 @@ Thumbs.db
 /00447330/
 /005b1ba0/
 /007050d0/
+
+# Python bytecode from tools/re
+__pycache__/

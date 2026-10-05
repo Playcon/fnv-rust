@@ -8,7 +8,7 @@ Start with [docs/MILESTONES.md](docs/MILESTONES.md) and open an issue or discuss
 
 Fork the repository and submit a pull request; contributors do not receive write access to the project. Describe the behavior changed, the evidence behind it, and any unresolved uncertainty. For game behavior, cite the executable build and address, game record or asset, or recording used. Include the relevant branch conditions and a regression case for behavior fixes. Do not present a hypothesis as verified behavior.
 
-Tests should create their inputs from scratch with the existing test fixture tools. Do not commit game assets, executable fragments, decompilation output, recordings, or files copied from a user's installation. The project reads data from a game installation the user owns; it does not redistribute that data.
+Tests should create their inputs from scratch with the existing test fixture tools. Do not commit game assets, executable fragments, decompilation output, recordings, or files copied from a user's installation. The project reads data from a game installation the user owns; it does not redistribute that data. To trace behaviour from your own copy of the executable, see [docs/RESEARCH_TOOLS.md](docs/RESEARCH_TOOLS.md).
 
 ## Code and checks
 

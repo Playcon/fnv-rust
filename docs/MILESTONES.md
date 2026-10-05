@@ -117,3 +117,6 @@ After each batch replace the active-work section with the latest outcome,
 evidence links, blockers and one next action. Keep this file short; detailed
 logs belong in topic references. Completion requires a reproducible acceptance
 run, not a count of parsed records or implemented functions.
+
+Executable research: tools, setup and the state of each traced topic are in
+[RESEARCH_TOOLS.md](RESEARCH_TOOLS.md); update its topic table with each batch.
