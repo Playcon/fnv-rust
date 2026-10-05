@@ -260,6 +260,25 @@ events and draws nothing. Not traced: what makes initialisation fail (taken here
 shader), whether running shader effects are saved (not saved here), the player's
 first-person flag (+0x4c). Nothing compared in the original game.
 
+## Terminals going back (`ForceTerminalBack`)
+
+20 calls in 17 terminal items, all in the Vault and the hologram vault terminals: a
+confirmation sub-screen's "No" item runs `ForceTerminalBack` to return to the screen
+before (`NVDLC01VaultMainInfoDeanTerminal` and others).
+
+**traced** (`005dc4e0`): if the terminal menu (1057, `ComputersMenu`) is open
+(`00a09030`), its screen stack is popped (`00758a80` → `0063f7b0`) and the new top shown
+(`007586e0`); with no screen left the terminal closes (`00757ea0`). Otherwise nothing.
+
+**in code**: the function sends `Shown::TerminalBack` while `menu_open` is the terminal
+menu (`world::terminal::TERMINAL_MENU`), which the viewer now sets while a terminal is
+shown. The viewer's terminal pops its screen stack for each one, closing past the first
+screen, right after the item's script and each frame (`viewer/src/menus.rs`,
+`terminal_backs`). Tests: `terminals_go_back_only_while_open`,
+`force_terminal_back_pops_screens_then_closes`. nvinspect: 183 of 199. **Not traced**: for
+an item with both a script and a sub-menu, whether the sub-menu opens before or after the
+script's back (here: after). Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

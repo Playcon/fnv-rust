@@ -70,6 +70,29 @@ enum Open {
     },
 }
 
+/// Carries out the `ForceTerminalBack`s scripts asked for (`005dc4e0`):
+/// each pops the terminal's screen stack and shows the screen before
+/// (`00758a80`); with none left the terminal closes (`00757ea0`): `true`.
+fn terminal_backs(
+    state: &mut world::scripting::GameState,
+    stack: &mut Vec<FormId>,
+    row: &mut usize,
+    printed: &mut String,
+) -> bool {
+    let back = world::scripting::Event::More(world::more_functions::Shown::TerminalBack);
+    let count = state.events.iter().filter(|e| **e == back).count();
+    state.events.retain(|e| *e != back);
+    for _ in 0..count {
+        stack.pop();
+        *row = 0;
+        printed.clear();
+        if stack.is_empty() {
+            return true;
+        }
+    }
+    false
+}
+
 /// A terminal screen's items the player can pick (their conditions pass),
 /// as (item, its number in the record).
 fn terminal_items(
@@ -395,7 +418,13 @@ pub fn run_menus(
             locked,
         } => {
             let back = pressed(KeyCode::Escape) || pressed(KeyCode::Tab);
-            if locked.is_some() {
+            // The terminal menu is open while it's shown (its scripts'
+            // `ForceTerminalBack` asks).
+            state.more.menu_open = Some(world::terminal::TERMINAL_MENU);
+            // `ForceTerminalBack`s since last frame: back a screen each.
+            if terminal_backs(state, stack, row, printed) {
+                done = true;
+            } else if locked.is_some() {
                 done = enter || back;
             } else if reading.is_some() {
                 if enter || back {
@@ -415,6 +444,12 @@ pub fn run_menus(
                                 Some(r),
                                 Some(r),
                             );
+                        }
+                        // The item's script went back (`ForceTerminalBack`)
+                        // before its sub-menu, if any, opens (the order
+                        // isn't traced).
+                        if terminal_backs(state, stack, row, printed) {
+                            done = true;
                         }
                         if let Some(note) = item.note {
                             // Flag 0x01: it goes into the Pip-Boy too.
@@ -444,6 +479,9 @@ pub fn run_menus(
     }
     let shown = if done {
         menus.open = None;
+        if state.more.menu_open == Some(world::terminal::TERMINAL_MENU) {
+            state.more.menu_open = None;
+        }
         if menus.queue.is_empty() && conversation.0.is_none() {
             player.ready = true;
         }
@@ -464,4 +502,47 @@ pub fn run_menus(
     // The menu has the keyboard.
     typed.clear();
     keys.reset_all();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn force_terminal_back_pops_screens_then_closes() {
+        let mut state = world::scripting::GameState::default();
+        let back = world::scripting::Event::More(world::more_functions::Shown::TerminalBack);
+        let mut stack = vec![FormId(1), FormId(2), FormId(3)];
+        let (mut row, mut printed) = (4, "Done.".to_string());
+        // Nothing asked: nothing changes.
+        assert!(!terminal_backs(
+            &mut state,
+            &mut stack,
+            &mut row,
+            &mut printed
+        ));
+        assert_eq!(stack.len(), 3);
+        // One back: the screen before, from its top, nothing printed.
+        state.events.push(back.clone());
+        assert!(!terminal_backs(
+            &mut state,
+            &mut stack,
+            &mut row,
+            &mut printed
+        ));
+        assert_eq!(
+            (stack.clone(), row, printed.as_str()),
+            (vec![FormId(1), FormId(2)], 0, "")
+        );
+        assert!(state.events.is_empty());
+        // Two more: past the first screen, the terminal closes.
+        state.events.extend([back.clone(), back]);
+        assert!(terminal_backs(
+            &mut state,
+            &mut stack,
+            &mut row,
+            &mut printed
+        ));
+        assert!(stack.is_empty());
+    }
 }

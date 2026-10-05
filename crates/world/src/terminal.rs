@@ -27,6 +27,9 @@ const NOTE: FourCC = FourCC::new(b"NOTE");
 /// `DNAM` flag: no hacking needed.
 pub const UNLOCKED: u8 = 0x02;
 
+/// The terminal menu's number (`ComputersMenu`, `&ComputersMenu;`).
+pub const TERMINAL_MENU: u16 = 1057;
+
 /// One menu item.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TerminalItem {

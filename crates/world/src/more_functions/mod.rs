@@ -58,6 +58,9 @@ pub enum Shown {
     /// `StopMagicShaderVisuals`: the reference's effects with that shader
     /// ended.
     ShaderVisualStopped { reference: FormId, shader: FormId },
+    /// `ForceTerminalBack`: the terminal goes back a screen, or closes
+    /// from its first.
+    TerminalBack,
     /// `Autosave`, `ForceSave`, `SystemSave`: a save the game asks for.
     Save(SaveKind),
     /// `SetGlobalTimeMultiplier`: everything runs this much faster.
@@ -246,6 +249,7 @@ pub fn describe(order: &LoadOrder, state: &GameState, shown: &Shown) -> String {
             Some(t) => format!("{} shows {} for {t} s", name(*reference), name(*shader)),
             None => format!("{} shows {}", name(*reference), name(*shader)),
         },
+        Shown::TerminalBack => "the terminal goes back a screen".to_string(),
         Shown::ShaderVisualStopped { reference, shader } => {
             format!("{} stops showing {}", name(*reference), name(*shader))
         }
@@ -378,6 +382,7 @@ pub const CHANGES: &[&str] = &[
     "SetSecuritronExpression",
     "AddSPECIALPoints",
     "SetSPECIALPoints",
+    "ForceTerminalBack",
     "AddTagSkills",
     "SetRumble",
 ];
@@ -1169,6 +1174,15 @@ fn carry_out(
         // for a while (`XInputSetState`) when one is connected; nothing in
         // the game changes, and nv-rs drives no rumble.
         "SetRumble" => {}
+        // `005dc4e0`: with the terminal menu (1057) open, its page stack
+        // is popped (`00758a80` → `0063f7b0`): the screen before is shown
+        // (`007586e0`), or with none left the terminal closes
+        // (`00757ea0`). Otherwise nothing. The viewer keeps the stack.
+        "ForceTerminalBack" => {
+            if runner.state.more.menu_open == Some(crate::terminal::TERMINAL_MENU) {
+                runner.state.events.push(Event::More(Shown::TerminalBack));
+            }
+        }
         _ => return None,
     }
     Some(0.0)

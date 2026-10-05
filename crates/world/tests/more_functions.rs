@@ -920,3 +920,27 @@ fn effect_shaders_on_references() {
         })]
     );
 }
+
+#[test]
+fn terminals_go_back_only_while_open() {
+    let (_data, order) = order("more-terminal-back");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let back = Event::More(Shown::TerminalBack);
+    // No terminal open: nothing.
+    run(&order, &scripts, &mut state, "ForceTerminalBack");
+    assert!(!state.events.contains(&back));
+    // Another menu open: nothing.
+    state.more.menu_open = Some(1036);
+    run(&order, &scripts, &mut state, "ForceTerminalBack");
+    assert!(!state.events.contains(&back));
+    // The terminal menu: back a screen, once per call.
+    state.more.menu_open = Some(world::terminal::TERMINAL_MENU);
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "ForceTerminalBack\nForceTerminalBack",
+    );
+    assert_eq!(state.events.iter().filter(|e| **e == back).count(), 2);
+}
