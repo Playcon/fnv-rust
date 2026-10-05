@@ -1303,6 +1303,18 @@ pub fn run_scripts(
                     world::more_functions::Shown::TimeMultiplier(m) => {
                         virtual_time.set_relative_speed(m.max(0.0));
                     }
+                    // `OpenTeammateContainer`: the container menu on the
+                    // companion's things, titled with their name. Its
+                    // companion mode (3) is drawn as a container's (mode 1)
+                    // here.
+                    world::more_functions::Shown::TeammateContainer { who } => {
+                        let title = name(world::scripting::base_of(order, who).unwrap_or(who));
+                        waiting.push(crate::menus::Menu::Container(who, title));
+                    }
+                    // `PushActorAway`: knocking someone down alive (a
+                    // ragdoll that gets up again) isn't drawn yet; only the
+                    // dead go limp here (`ActorRig::go_limp`).
+                    world::more_functions::Shown::PushedAway { .. } => {}
                     _ => {}
                 }
                 None

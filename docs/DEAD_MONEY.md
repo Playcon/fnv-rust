@@ -309,6 +309,66 @@ the script (nv-rs's statements can't; Dead Money calls it last); an actor's equi
 instance isn't told apart. The Caravan game itself and a deck aren't here. Nothing compared
 in the original game.
 
+## Companions and actors (`OpenTeammateContainer`, `PushActorAway`, `SetDisposition`, `GetCauseofDeath`)
+
+9 calls. `OpenTeammateContainer` is the result of four companion dialogue lines (the
+`FollowersTrade` topic). `PushActorAway`: Elijah pushes the player with 5 in a dialogue
+result when `VaultCodeBox.bPlayerBlocks` is set (`NVDLC01ElijahVaultSentryDownTopic03`),
+and a spell effect (`NVDLC01StarletKnockdownScript`) has the lobby hologram push whoever
+it lands on, other than itself and the player, with 10. `SetDisposition` is in the lobby
+hologram's `OnHit` (`NVDLC01StarletLobbyScript`: `NVDLC01StarLobby.SetDisposition player
+100`; its comment says it keeps her from turning hostile). `GetCauseofDeath` is in Dog's
+death script (`NVDLC01DogScript`): killed by an explosion (`GetCauseOfDeath == 0`) in the
+restaurant with the gas traps not all set (`nGasTraps != 3`), the kitchen valves explode
+and the player dies; any other death there starts the collar's countdown.
+
+**traced**:
+
+* `OpenTeammateContainer` (`005d9430`): on a person or creature who is the player's
+  teammate (actor +0x18d), or any with the optional number not 0, the container menu
+  opens on their things in its companion mode (`00709470`, mode 3). Always succeeds.
+* `PushActorAway` (`005d6b60`): the caller pushes the actor given away. Not an actor: the
+  game prints "SCRIPTS: PushActorAway in script '…' is attempting to push a non-actor
+  reference." and nothing else. The force (`00646580`) is (`fKnockbackAgilBase` +
+  `fKnockbackAgilMult` × Agility × 10) × (number × `fKnockbackDamageMult` +
+  `fKnockbackDamageBase`), with the pushed actor's Agility. None of these settings is in
+  `FalloutNV.esm`; the exe's defaults (`00f61a40`…`00f61ad0`) are 1, −0.008, 50 and 10.
+  Agility 5 and Elijah's 5 give 60; Agility 10 gives 20. Only an actor with the high AI
+  process (process +0x28 is 0) is pushed: from the caller's centre (`Actor` vtable +0x1f4,
+  `008ae4c0`) through the process (`0091fee0`), which for an actor that can be knocked
+  down sets its knock state to 2 and throws its ragdoll from that point with the force.
+  With the player as the caller, something more goes to `005f5950` first (not traced).
+* `SetDisposition` (`005d54a0`): on a person or creature, with an actor given, takes the
+  disposition now (vtable +0x344, `0087fd90`) from the number and adds the difference
+  (vtable +0x460, `0087fb40`). That adds only toward the player: the actor keeps a list of
+  (amount, toward whom) at +0xfc (change flag 0x80000), and the amount is cut so the
+  disposition stays within 0–100.
+* `GetCauseofDeath` (`005be740` → `005a3d30` → `005730d0`): on a person or creature, the
+  cause kept in its dismembered-limbs extra data (0x5f, +0x10); else −1. It is written at
+  death (`00572fc0`, from `008b4d10`): the hit handler (`0089a760`) picks it by the form
+  type of what struck — a weapon (a melee blow) 2, a missile, beam, flame or continuous
+  beam projectile 1, a grenade or an explosion 0, an ingestible 5, debris 4, anything
+  else (fists, a creature's attack) 3; a source with vtable +0x220 set makes it 0. `Kill`
+  with a limb keeps its third number (default −1) as the cause (`005be2a0` → `008b51b0`).
+
+**in code**: `crates/world/src/more_functions/actors.rs`. `OpenTeammateContainer` sends
+`Shown::TeammateContainer`, and the viewer opens its container menu on the companion.
+`PushActorAway` sends `Shown::PushedAway` with the force, for someone the viewer reports
+loaded. Dispositions toward the player and causes of death are kept and saved. Killing
+hits keep a cause: no weapon 3, a melee weapon 2, a lobber's projectile 0, other
+projectiles 1. Test: `companions_pushes_dispositions_and_causes_of_death`. nvinspect: 190
+of 199.
+
+**Not done**: the container menu's companion mode is drawn as an ordinary container (mode
+1). Being knocked down alive isn't drawn: the viewer only ragdolls the dead, and the knock
+state and getting up aren't kept (`GetKnockedState` stays 0). The rest of the game's
+disposition reckoning (`0087fd90`: factions, Charisma and more) isn't carried out, so
+the disposition toward the player is only what scripts added (starting at 0), and
+`GetDisposition`/`ModDisposition` aren't wired to it yet. nv-rs has no explosions,
+poison or debris that kill, so causes 0 (except grenades), 4 and 5 don't happen. The
++0x220 source flag and the player-caller branch of `PushActorAway` aren't traced.
+Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

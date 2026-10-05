@@ -16,6 +16,7 @@
 //! no procedure (as the game's handlers answer for someone without an AI
 //! process).
 
+pub mod actors;
 pub mod carried;
 pub mod challenges;
 pub mod destruction;
@@ -59,6 +60,17 @@ pub enum Shown {
     /// `StopMagicShaderVisuals`: the reference's effects with that shader
     /// ended.
     ShaderVisualStopped { reference: FormId, shader: FormId },
+    /// `OpenTeammateContainer`: the container menu on a companion's things
+    /// (its mode [`actors::TEAMMATE_MODE`]).
+    TeammateContainer { who: FormId },
+    /// `PushActorAway`: `who` is knocked down (the AI process's knock
+    /// state 2) and thrown as a ragdoll from `from`'s centre with this
+    /// force ([`actors::push_force`]).
+    PushedAway {
+        who: FormId,
+        from: FormId,
+        force: f32,
+    },
     /// `ForceTerminalBack`: the terminal goes back a screen, or closes
     /// from its first.
     TerminalBack,
@@ -185,6 +197,12 @@ pub struct State {
     pub shader_visuals: Vec<shaders::ShaderVisual>,
     /// The player's Caravan cards ([`carried`]), saved.
     pub cards: carried::Cards,
+    /// What scripts did to people's dispositions toward the player
+    /// ([`actors`]), saved.
+    pub dispositions: actors::Dispositions,
+    /// How people died ([`actors::cause`]; the dismembered limbs extra
+    /// data's +0x10), saved.
+    pub cause_of_death: HashMap<FormId, i32>,
     /// The menu open now, while its `MenuMode` blocks run or the viewer
     /// shows it (not saved).
     pub menu_open: Option<u16>,
@@ -256,6 +274,10 @@ pub fn describe(order: &LoadOrder, state: &GameState, shown: &Shown) -> String {
         Shown::ShaderVisualStopped { reference, shader } => {
             format!("{} stops showing {}", name(*reference), name(*shader))
         }
+        Shown::TeammateContainer { who } => format!("{}'s things open to trade", name(*who)),
+        Shown::PushedAway { who, from, force } => {
+            format!("{} pushes {} away (force {force})", name(*from), name(*who))
+        }
         Shown::Destruction {
             what,
             stage,
@@ -317,6 +339,7 @@ pub const READS: &[&str] = &[
     "IsActorTalkingThroughActivator",
     "GetBroadcastState",
     "IsLimbGone",
+    "GetCauseofDeath",
     "IsInCriticalStage",
     "IsSneaking",
     "IsRunning",
@@ -398,6 +421,7 @@ pub fn handled() -> impl Iterator<Item = &'static str> {
         .chain(radio::CHANGES)
         .chain(shaders::CHANGES)
         .chain(carried::FUNCTIONS)
+        .chain(actors::FUNCTIONS)
         .chain(crate::sight::FUNCTIONS)
         .copied()
 }
@@ -604,6 +628,16 @@ fn read(facts: &Facts, name: &str, on: Option<FormId>, args: &[Value]) -> Option
                 flag(gone(from))
             } else {
                 flag((from..=to).any(gone))
+            }
+        }
+        // `005be740` → `005a3d30` → `005730d0`: a person or creature's
+        // cause of death (dismembered limbs extra data +0x10); −1 when
+        // none was kept or for anything else.
+        "GetCauseofDeath" => {
+            let who = on?;
+            match s.more.cause_of_death.get(&who) {
+                Some(&c) if actor(who) => f64::from(c),
+                _ => -1.0,
             }
         }
         // `005a2910`: the actor's critical stage is this one.
@@ -908,6 +942,9 @@ pub(crate) fn change(
     }
     if carried::FUNCTIONS.contains(&name) {
         return Some(carried::carry_out(runner, name, target, args));
+    }
+    if actors::FUNCTIONS.contains(&name) {
+        return Some(actors::carry_out(runner, name, target, args));
     }
     if shaders::CHANGES.contains(&name) {
         return Some(shaders::carry_out(runner, name, target, args));
@@ -1278,6 +1315,7 @@ pub(crate) fn save_lines(state: &GameState, line: &mut dyn FnMut(String)) {
     destruction::save_lines(state, line);
     radio::save_lines(state, line);
     carried::save_lines(state, line);
+    actors::save_lines(state, line);
 }
 
 /// A saved line back: `None` if the word isn't one of these.
@@ -1288,6 +1326,7 @@ pub(crate) fn load_line(state: &mut GameState, raw: &str) -> Option<Result<(), S
         .or_else(|| destruction::load_line(state, &parts))
         .or_else(|| radio::load_line(state, &parts))
         .or_else(|| carried::load_line(state, &parts))
+        .or_else(|| actors::load_line(state, &parts))
     {
         return Some(r);
     }

@@ -993,3 +993,166 @@ fn caravan_cards_picked_up() {
     let (back, _) = world::save::load(&saved).unwrap();
     assert_eq!(back.more.cards, state.more.cards);
 }
+
+#[test]
+fn companions_pushes_dispositions_and_causes_of_death() {
+    let (_data, order) = order("more-actors");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let q = |state: &mut GameState, e: &str| ask(&order, &scripts, state, e);
+    let opened = |state: &GameState, who: u32| {
+        state
+            .events
+            .contains(&Event::More(Shown::TeammateContainer { who: FormId(who) }))
+    };
+
+    // A companion's things open; someone else's only when forced, and
+    // never a barrel's.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.OpenTeammateContainer",
+    );
+    assert!(!opened(&state, PERSON_REF));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetPlayerTeammate 1",
+    );
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.OpenTeammateContainer",
+    );
+    assert!(opened(&state, PERSON_REF));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "DogRef.OpenTeammateContainer 1",
+    );
+    assert!(opened(&state, DOG_REF));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "BarrelRef.OpenTeammateContainer 1",
+    );
+    assert!(!opened(&state, BARREL_REF));
+
+    // A push: only someone with 3D loaded, at the force from their
+    // Agility and the number.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "HeroRef.PushActorAway PersonRef 5",
+    );
+    let pushed = |state: &GameState| {
+        state
+            .events
+            .iter()
+            .filter(|e| matches!(e, Event::More(Shown::PushedAway { .. })))
+            .count()
+    };
+    assert_eq!(pushed(&state), 0);
+    more::report_loaded(&mut state, [FormId(PERSON_REF)].into_iter().collect());
+    let agility = q(&mut state, "PersonRef.GetActorValue Agility");
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "HeroRef.PushActorAway PersonRef 5",
+    );
+    assert!(state.events.contains(&Event::More(Shown::PushedAway {
+        who: FormId(PERSON_REF),
+        from: FormId(HERO_REF),
+        force: more::actors::push_force(&order, f64::from(agility), 5),
+    })));
+    // Agility 5, 5: (1 − 0.008 × 50) × (5 × 10 + 50).
+    assert!((more::actors::push_force(&order, 5.0, 5) - 60.0).abs() < 1e-4);
+    // Not an actor: nothing pushed (the game only reports it).
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "HeroRef.PushActorAway BarrelRef 5",
+    );
+    assert_eq!(pushed(&state), 1);
+
+    // A disposition toward the player moves to the number, within 0–100;
+    // toward anyone else nothing is kept.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetDisposition player 100",
+    );
+    assert_eq!(
+        more::actors::disposition(&state, FormId(PERSON_REF), PLAYER_REF),
+        100
+    );
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetDisposition player 40",
+    );
+    assert_eq!(
+        more::actors::disposition(&state, FormId(PERSON_REF), PLAYER_REF),
+        40
+    );
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetDisposition player 250",
+    );
+    assert_eq!(
+        more::actors::disposition(&state, FormId(PERSON_REF), PLAYER_REF),
+        100
+    );
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetDisposition player -5",
+    );
+    assert_eq!(
+        more::actors::disposition(&state, FormId(PERSON_REF), PLAYER_REF),
+        0
+    );
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetDisposition DogRef 80",
+    );
+    assert_eq!(state.more.dispositions.0.len(), 1);
+
+    // Causes of death: none kept is −1; fists kill hand to hand; `Kill`
+    // with a limb keeps the cause given.
+    assert_eq!(q(&mut state, "DogRef.GetCauseofDeath"), -1.0);
+    for _ in 0..1000 {
+        if state.dead.contains(&FormId(DOG_REF)) {
+            break;
+        }
+        Runner::new(&order, &scripts, &mut state).hit(PLAYER_REF, FormId(DOG_REF), None);
+    }
+    assert!(state.dead.contains(&FormId(DOG_REF)));
+    assert_eq!(q(&mut state, "DogRef.GetCauseofDeath"), 3.0);
+    run(&order, &scripts, &mut state, "PersonRef.Kill player");
+    assert_eq!(q(&mut state, "PersonRef.GetCauseofDeath"), -1.0);
+    run(&order, &scripts, &mut state, "HeroRef.Kill player 0 0");
+    assert_eq!(q(&mut state, "HeroRef.GetCauseofDeath"), 0.0);
+    assert_eq!(q(&mut state, "BarrelRef.GetCauseofDeath"), -1.0);
+
+    // Both are kept in a save.
+    let saved = world::save::save(&state, None);
+    let (back, _) = world::save::load(&saved).unwrap();
+    assert_eq!(back.more.dispositions, state.more.dispositions);
+    assert_eq!(back.more.cause_of_death, state.more.cause_of_death);
+}

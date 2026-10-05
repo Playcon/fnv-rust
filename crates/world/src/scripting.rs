@@ -2615,6 +2615,9 @@ impl<'a> Runner<'a> {
             self.state
                 .killing_blow_limb
                 .insert(target, part.map_or(-1, i32::from));
+            // How they died (`GetCauseofDeath`), by what struck.
+            let cause = crate::more_functions::actors::cause_of(order, weapon);
+            crate::more_functions::actors::record_cause(self.state, target, cause);
             if person
                 && !was_hostile
                 && (attacker == PLAYER_REF || self.state.teammates.contains(&attacker))
@@ -2914,6 +2917,13 @@ impl<'a> Runner<'a> {
             "KillActor" => {
                 let who = target?;
                 let by = args.first().map_or(who, Value::form);
+                // With a limb (`005be2a0` → `008b51b0`), the cause given (or
+                // −1) is kept as the cause of death.
+                let limb = args.get(1).map_or(-1, |v| v.number() as i32);
+                if limb != -1 {
+                    let cause = args.get(2).map_or(-1, |v| v.number() as i32);
+                    crate::more_functions::actors::record_cause(self.state, who, cause);
+                }
                 let full = crate::combat::max_health(self.order, self.state, who).unwrap_or(1.0);
                 crate::combat::hurt(self.order, self.state, who, full.max(1.0) * 10.0, by);
             }
