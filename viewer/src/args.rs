@@ -41,6 +41,10 @@ OPTIONS:
                             its first stage (movie playback is not yet
                             implemented); scripts take you to Doc's house
                             (the CELL can then be left out)
+    --character FILE        start as a ready-made test character: a file
+                            of the game's script lines (editor IDs) run
+                            on the new game before its first frame, plus
+                            `level N` (see characters/README.md)
     --weapon ID             start with this weapon (editor ID or form ID)
                             equipped and 50 rounds for it; screenshots
                             then show it in your hands
@@ -148,6 +152,8 @@ pub struct Args {
     pub talk: bool,
     /// A quest stage to set once loaded: the quest's editor ID and stage.
     pub stage: Option<(String, u16)>,
+    /// A ready-made test character to start as (`world::character`).
+    pub character: Option<PathBuf>,
     /// A weapon to start with, equipped.
     pub weapon: Option<String>,
     /// Script lines to run once loaded, as console commands.
@@ -221,6 +227,7 @@ pub fn parse(args: &[String]) -> Result<Option<Args>, String> {
     let mut stage = None;
     let mut new_game = false;
     let mut weapon = None;
+    let mut character = None;
     let mut run = Vec::new();
     let mut weather_region = None;
     let mut hud = true;
@@ -275,6 +282,7 @@ pub fn parse(args: &[String]) -> Result<Option<Args>, String> {
             }
             "--new-game" => new_game = true,
             "--weapon" => weapon = Some(value("--weapon")?),
+            "--character" => character = Some(value("--character")?.into()),
             "--run" => run.push(value("--run")?),
             "--weather-region" => weather_region = Some(value("--weather-region")?),
             "--no-hud" => hud = false,
@@ -343,6 +351,7 @@ pub fn parse(args: &[String]) -> Result<Option<Args>, String> {
             fps,
             talk,
             stage,
+            character,
             weapon,
             run,
             weather_region,
@@ -394,6 +403,11 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(frozen.freeze_ai);
+        let character = parse(&strings(&["Data", "Cell", "--character", "c.txt"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(character.character, Some(PathBuf::from("c.txt")));
+        assert_eq!(frozen.character, None);
     }
 
     #[test]

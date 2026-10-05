@@ -155,6 +155,30 @@ fn main() {
     }
     // Walking, except for screenshots, which keep the exact eye given.
     let player = walk::Player::new(args.screenshot.is_none() || args.walk);
+    // A ready-made test character, set up before the first frame.
+    let mut state = world::dialogue::GameState::new(&game.order);
+    if let Some(path) = &args.character {
+        match std::fs::read_to_string(path) {
+            Ok(text) => {
+                let scripts = world::scripting::ScriptCache::default();
+                let problems = world::character::apply(&game.order, &scripts, &mut state, &text);
+                println!(
+                    "Character {}: {} problem(s).",
+                    path.display(),
+                    problems.len()
+                );
+                for p in problems {
+                    println!("  line {}: {} ({})", p.line, p.text, p.why);
+                }
+                // What it set up isn't news to show on screen.
+                state.events.clear();
+            }
+            Err(e) => {
+                eprintln!("error: can't read {}: {e}", path.display());
+                std::process::exit(1);
+            }
+        }
+    }
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
         // Lit surfaces do their own lighting (see `lighting`); nothing else
@@ -170,9 +194,7 @@ fn main() {
             on: args.fps,
             ..default()
         })
-        .insert_resource(dialogue::DialogueState(world::dialogue::GameState::new(
-            &game.order,
-        )))
+        .insert_resource(dialogue::DialogueState(state))
         .insert_resource(sitting::Seats::new(&game.order))
         .insert_resource(faces::Faces::new(&game))
         .insert_resource(actors::AnimSettings::read(&game.settings))

@@ -25,6 +25,7 @@ pub mod animation;
 pub mod barter;
 pub mod body_parts;
 mod cell;
+pub mod character;
 pub mod chargen;
 pub mod combat;
 pub mod combat_ai;

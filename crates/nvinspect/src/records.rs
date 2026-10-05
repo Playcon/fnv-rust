@@ -664,6 +664,8 @@ fn execute(
             seconds,
             stage.as_ref().map(|(q, s)| (q.as_str(), *s)),
             options.limit.unwrap_or(40),
+            options.character.as_deref(),
+            options.cell.as_deref(),
         ),
         Command::Actor(target) => actor(out, order, &target),
         Command::Dialogue(target) => dialogue(out, order, &target),

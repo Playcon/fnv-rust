@@ -129,7 +129,10 @@ COMMANDS FOR PLUGINS AND DATA FOLDERS:
                           SECONDS of game time (60 by default): what
                           happened, and which functions they needed that
                           aren't carried out yet (with the first call of
-                          each); message boxes get their first button
+                          each); message boxes get their first button.
+                          --character FILE starts as a test character
+                          (characters/README.md), --cell CELL puts the
+                          player in that interior cell for the scripts
 
 COMMANDS FOR DATA FOLDERS ONLY:
     find <PATH>           where the game loads a file from (loose file or
@@ -399,6 +402,11 @@ pub struct Options {
     pub force: bool,
     pub ini: Option<PathBuf>,
     pub all_meshes: bool,
+    /// `play`: a ready-made test character to start as
+    /// (`world::character`).
+    pub character: Option<PathBuf>,
+    /// `play`: the cell the player is in (editor ID), for scripts that ask.
+    pub cell: Option<String>,
     pub render: render_cmd::RenderFlags,
 }
 
@@ -550,6 +558,8 @@ fn parse_args(args: &[String]) -> Result<(Vec<String>, Options), CliError> {
             "--force" => options.force = true,
             "--ini" => options.ini = Some(value_for("--ini", &mut iter)?.into()),
             "--all-meshes" => options.all_meshes = true,
+            "--character" => options.character = Some(value_for("--character", &mut iter)?.into()),
+            "--cell" => options.cell = Some(value_for("--cell", &mut iter)?),
             flag if options.render.parse(flag, || value_for(flag, &mut iter))? => {}
             flag if flag.starts_with("--") => {
                 return Err(CliError::Usage(format!("unknown option '{flag}'")))

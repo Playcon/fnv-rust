@@ -1019,10 +1019,36 @@ pub fn play(
     seconds: f32,
     stage: Option<(&str, u16)>,
     show: usize,
+    character: Option<&std::path::Path>,
+    cell: Option<&str>,
 ) -> Result<(), CliError> {
     let started = Instant::now();
     let scripts = ScriptCache::default();
     let mut state = GameState::new(order);
+    if let Some(cell) = cell {
+        let id = order
+            .form_by_editor_id(cell)
+            .ok_or_else(|| CliError::NotFound(format!("no cell '{cell}'")))?;
+        state.player_cell = Some(id);
+        state.player_world = None;
+        writeln!(out, "The player is in {cell}.")?;
+    }
+    if let Some(path) = character {
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| CliError::Usage(format!("can't read {}: {e}", path.display())))?;
+        let problems = world::character::apply(order, &scripts, &mut state, &text);
+        writeln!(
+            out,
+            "Character {}: {} problem(s)",
+            path.display(),
+            problems.len()
+        )?;
+        for p in problems {
+            writeln!(out, "  line {}: {} ({})", p.line, p.text, p.why)?;
+        }
+        // What it set up happened before; only what follows is news.
+        state.events.clear();
+    }
     writeln!(
         out,
         "A new game: {} quests running, {} globals",

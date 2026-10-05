@@ -119,6 +119,72 @@ The results fill four things:
 Each step follows the usual method: trace, write up here with addresses or record IDs,
 implement with tests, open a pull request, and compare in the original game.
 
+## D2: Entry with a test character
+
+**Where the DLC begins (checked in the data)**: `NVDLC01MQ00` starts with the game.
+* Once Radio New Vegas is on (`RNVTARef` enabled: the player has left Doc Mitchell's
+  house), its script waits 30 seconds, sets stage 10 and shows the download messages.
+  Stage 10 unlocks the Brotherhood bunker's entrance (`SLBoSBunkerEntranceRef`), shows its
+  map marker and objective, and enables the Sierra Madre broadcast.
+* The bunker interior, **`SLBoSBunkerINT`** (a base-game cell; Dead Money adds 294
+  objects), is the DLC's entry cell.
+* Inside, `NVDLC01VillaTravelTrigger` (`NVDLC01VillaTravelTriggerScript`) runs the
+  knock-out: the objective completed, stage 100, controls off, the gas, the gear moved to
+  `NVDLC01PlayerEquipmentContainerRef`, a fade, then `NVDLC01Intro` (the slideshow in
+  `NVDLC01Slideshow`).
+* While `bTeleportOut` is 0, MQ00's script moves anyone in the bunker back outside
+  (`NVDLC01BunkerExitMarker`; "pre-patch" safety). It sets that flag on its own way to
+  stage 10, so setting the stage alone (`--stage`) puts the player outdoors.
+
+**in code**:
+* `world::character`: a ready-made test character is a file of the game's script lines
+  (editor IDs), run on a new game before its first frame, plus `level N`; it reports lines
+  that didn't take.
+* The viewer takes it as `--character FILE`, and `nvinspect play` as `--character FILE`,
+  with `--cell CELL` for the player's cell.
+* `characters/dead-money-entry.txt` is the D2 character: level 20, Radio New Vegas on,
+  MQ00 at stage 10 with its own flags set, modest gear equipped. It also marks the other
+  DLCs' start-up broadcasts as already received (the pre-order packs' items, Old World
+  Blues, Honest Hearts, Lonesome Road, Gun Runners' Arsenal's message), as they would be
+  for a courier who has been playing. Without that, each shows its message box on
+  arrival.
+* Test: `a_character_file_sets_up_the_game`.
+
+```powershell
+nv-viewer <Data> SLBoSBunkerINT --official --character characters\dead-money-entry.txt
+nvinspect <Data> play 60 --official --character characters\dead-money-entry.txt --cell SLBoSBunkerINT
+```
+
+**What works** (viewer, 2026-10-05):
+* The bunker loads: 303 objects, its lighting, fog, image space, collision and doors,
+  military location music and the bunker's ambient sound. The player starts at the door
+  from the Mojave, level 20, with the 9mm in hand (the HUD shows its ammunition).
+* No face menu, no opening, and no stray message boxes. MQ00 stays at stage 10 and doesn't
+  warp the player out.
+* Walking into the travel trigger runs the knock-out in order:
+  * MQ00's objective completed, stage 100;
+  * controls off and the `ExplosionInFace` screen effect;
+  * the move to `NVDLC01PlayerGasMarker` and the player's captured idle;
+  * `FadeToBlackPermanent`, then `NVDLC01Intro`: the slideshow music, the move into
+    `NVDLC01Slideshow`, the fade lifted, the narrator's first line.
+* Headless (`nvinspect play` with the character, 60 s): no messages. Stages set: MQ00 10
+  and the other DLCs' 10s.
+
+**Missing** (for D3 and later):
+* Objects placed **initially disabled** in the cell the player is in can't be enabled by a
+  script: the viewer leaves them out when it loads the cell. This affects the gas jets
+  (`FXSprayJet0101Ref`…`0104Ref`), which the trigger script enables in this same cell. A
+  viewer issue, not Dead Money's.
+* The slideshow's first view looked tilted; check against the game in D3.
+* That the gear really moves to the equipment container isn't checked yet (D3).
+* The bunker's vending machine, workbench and reloading bench open the recipe menu, which
+  nv-rs doesn't have (see "Crafting and casino menus").
+* Calls from other quests that aren't carried out, seen running headless: Lonesome Road's
+  `AddItemToLeveledList`, and base-game scripts' `GetInSameCell`, `GetDetected`, and
+  `GetAngle` / `GetDistance` on the player (the viewer knows where the player is; the
+  headless run doesn't).
+* Nothing compared in the original game yet.
+
 ## Radio
 
 Dead Money calls six radio functions nv-rs lacked: the Pip-Boy radio switched off for the
@@ -505,6 +571,7 @@ talking activators is taken to be met. Nothing compared in the original game.
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?
-* What does the test character start with: base-game defaults, or a level and gear chosen
-  to match a typical arrival?
+* What does the test character start with? **Answered for now (D2)**: level 20, the player
+  record's own S.P.E.C.I.A.L. and skills, modest gear (`characters/dead-money-entry.txt`).
+  Change the file if a different arrival is wanted.
 * Where are the DLC bits at `011c3f2c` read, and does any rule depend on them?
