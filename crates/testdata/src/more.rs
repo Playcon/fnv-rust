@@ -65,6 +65,8 @@ pub mod ids {
     pub const ELAPSED: u32 = 0xE16;
     /// A radio topic (`DIAL`, type 7) for `StartRadioConversation`.
     pub const RADIO_TOPIC: u32 = 0xE17;
+    /// An effect shader (`EFSH`) for `PlayMagicShaderVisuals`.
+    pub const SHADER: u32 = 0xE18;
 }
 
 /// The world, written as `FalloutNV.esm` into a temporary Data folder.
@@ -156,6 +158,11 @@ pub fn more(tag: &str) -> TempData {
     plugin.extend(group(*b"TACT", 0, &radio));
     let mut topic_data = sub(b"FULL", &zstr("Radio topic"));
     topic_data.extend(sub(b"DATA", &[7, 0]));
+    plugin.extend(group(
+        *b"EFSH",
+        0,
+        &named(b"EFSH", SHADER, "TestShader", &sub(b"DATA", &[0; 4])),
+    ));
     plugin.extend(group(
         *b"DIAL",
         0,

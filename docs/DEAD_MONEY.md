@@ -228,6 +228,38 @@ test reads. Not carried out: an object target for someone other than the player 
 cone `0088c570` and rays from the eyes), the player's test headless, and conditions
 (`CTDA`) asking it. Nothing compared in the original game.
 
+## Effect shaders (`PlayMagicShaderVisuals`, `StopMagicShaderVisuals`)
+
+160 calls. Mostly the holograms' moods: scripts swap `NVDLC01HologramNeutral`,
+`NVDLC01HologramAttention` and `NVDLC01HologramAggressive` on them (object scripts, the
+hologram spell effects' `ScriptEffectStart`/`Finish` blocks, a terminal), plus the heated
+knife's `Flames01`/`Smoke01`, Elijah and Dog/God.
+
+**traced**:
+
+* `PlayMagicShaderVisuals` (`005d1b80`) takes an effect shader and seconds (default −1).
+  No reference: the player. Unless the reference's cell is attached (`004511e0`) and it
+  has 3D (vtable +0x1d0), nothing happens (it still succeeds). Otherwise a new
+  `MagicShaderHitEffect` (`0081f580`) is made for the reference and shader: seconds of 0
+  or more are its lifetime, below 0 `FLT_MAX` (until stopped). If it initialises
+  (vtable +0xc4) it joins the running effects (`00973fd0`); one already running isn't
+  replaced, so they stack.
+* `StopMagicShaderVisuals` (`005d2130` → `00974a50`) ends every running
+  `MagicShaderHitEffect` on the reference with that shader.
+* With the console's debug flag both print what they did.
+
+**in code** (`crates/world/src/more_functions/shaders.rs`, test
+`effect_shaders_on_references`): the running shaders (reference, shader, end time on the
+state's clock) with those rules, and `Shown::ShaderVisual` / `ShaderVisualStopped` for the
+viewer. The viewer reports each frame what has 3D (`report_loaded`: rendered placed
+objects, people about, the player). nvinspect: 182 of 199.
+
+**Not done**: drawing them. nv-rs doesn't read `EFSH` records yet (fill and edge
+textures, colours and their timing, membrane and particle shaders); the viewer gets the
+events and draws nothing. Not traced: what makes initialisation fail (taken here as no
+shader), whether running shader effects are saved (not saved here), the player's
+first-person flag (+0x4c). Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

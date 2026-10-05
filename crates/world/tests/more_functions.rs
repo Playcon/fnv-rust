@@ -855,3 +855,68 @@ fn line_of_sight() {
         1.0
     );
 }
+
+#[test]
+fn effect_shaders_on_references() {
+    use world::more_functions::shaders;
+    let (_data, order) = order("more-shaders");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    more::report_loaded(
+        &mut state,
+        [PLAYER_REF, FormId(PERSON_REF), FormId(BARREL_REF)]
+            .into_iter()
+            .collect(),
+    );
+    let running = |state: &GameState| -> Vec<(u32, Option<f64>)> {
+        shaders::active(state)
+            .map(|v| {
+                assert_eq!(v.shader, FormId(SHADER));
+                (v.reference.0, v.until)
+            })
+            .collect()
+    };
+    // Until stopped; again, a second one (they stack); for 2 s; with no
+    // 3D, nothing; no reference, the player.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.PlayMagicShaderVisuals TestShader\nPersonRef.pms TestShader\n\
+         BarrelRef.pms TestShader 2\nHeroRef.pms TestShader\npms TestShader",
+    );
+    let now = state.seconds;
+    assert_eq!(
+        running(&state),
+        vec![
+            (PERSON_REF, None),
+            (PERSON_REF, None),
+            (BARREL_REF, Some(now + 2.0)),
+            (PLAYER_REF.0, None),
+        ]
+    );
+    assert!(state.events.contains(&Event::More(Shown::ShaderVisual {
+        reference: FormId(BARREL_REF),
+        shader: FormId(SHADER),
+        seconds: Some(2.0),
+    })));
+    // Its seconds over, the barrel's ends.
+    state.seconds += 3.0;
+    assert_eq!(running(&state).len(), 3);
+    // Stopping ends every one with that shader on the reference.
+    state.events.clear();
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.StopMagicShaderVisuals TestShader\nHeroRef.sms TestShader",
+    );
+    assert_eq!(running(&state), vec![(PLAYER_REF.0, None)]);
+    assert_eq!(
+        state.events,
+        vec![Event::More(Shown::ShaderVisualStopped {
+            reference: FormId(PERSON_REF),
+            shader: FormId(SHADER),
+        })]
+    );
+}

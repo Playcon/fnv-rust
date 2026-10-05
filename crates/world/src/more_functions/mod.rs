@@ -21,6 +21,7 @@ pub mod destruction;
 pub mod placed;
 pub mod procedures;
 pub mod radio;
+pub mod shaders;
 
 use std::collections::{HashMap, HashSet};
 
@@ -47,6 +48,16 @@ pub enum Shown {
     ActorAlpha { who: FormId, alpha: f32 },
     /// `SetGhost`: someone became a ghost (true) or stopped being one.
     Ghost { who: FormId, on: bool },
+    /// `PlayMagicShaderVisuals`: an effect shader (`EFSH`) runs on a
+    /// reference, for `seconds` or (`None`) until stopped.
+    ShaderVisual {
+        reference: FormId,
+        shader: FormId,
+        seconds: Option<f32>,
+    },
+    /// `StopMagicShaderVisuals`: the reference's effects with that shader
+    /// ended.
+    ShaderVisualStopped { reference: FormId, shader: FormId },
     /// `Autosave`, `ForceSave`, `SystemSave`: a save the game asks for.
     Save(SaveKind),
     /// `SetGlobalTimeMultiplier`: everything runs this much faster.
@@ -163,6 +174,11 @@ pub struct State {
     /// (`GetLineOfSight` asks it, [`crate::sight`]), by (who, whom), as the
     /// viewer reports it ([`report_detection_sight`]; not saved).
     pub detection_sight: HashMap<(FormId, FormId), bool>,
+    /// References with 3D loaded now (in an attached cell), as the viewer
+    /// last reported them ([`report_loaded`]; not saved).
+    pub loaded: HashSet<FormId>,
+    /// Effect shaders scripts put on references ([`shaders`]; not saved).
+    pub shader_visuals: Vec<shaders::ShaderVisual>,
     /// The menu open now, while its `MenuMode` blocks run or the viewer
     /// shows it (not saved).
     pub menu_open: Option<u16>,
@@ -222,6 +238,17 @@ pub fn describe(order: &LoadOrder, state: &GameState, shown: &Shown) -> String {
             }
         ),
         Shown::TimeMultiplier(m) => format!("time runs {m}x as fast"),
+        Shown::ShaderVisual {
+            reference,
+            shader,
+            seconds,
+        } => match seconds {
+            Some(t) => format!("{} shows {} for {t} s", name(*reference), name(*shader)),
+            None => format!("{} shows {}", name(*reference), name(*shader)),
+        },
+        Shown::ShaderVisualStopped { reference, shader } => {
+            format!("{} stops showing {}", name(*reference), name(*shader))
+        }
         Shown::Destruction {
             what,
             stage,
@@ -260,6 +287,12 @@ pub fn report(state: &mut GameState, who: FormId, seen: Seen) {
 /// end once played, or the ones the model plays from the start.
 pub fn report_sequences(state: &mut GameState, sequences: HashMap<FormId, Vec<String>>) {
     state.more.sequences = sequences;
+}
+
+/// The viewer tells which references have 3D loaded now, replacing the
+/// last report.
+pub fn report_loaded(state: &mut GameState, loaded: HashSet<FormId>) {
+    state.more.loaded = loaded;
 }
 
 /// The viewer tells what `who`'s detection run found of `other`: whether
@@ -355,6 +388,7 @@ pub fn handled() -> impl Iterator<Item = &'static str> {
         .iter()
         .chain(CHANGES)
         .chain(radio::CHANGES)
+        .chain(shaders::CHANGES)
         .chain(crate::sight::FUNCTIONS)
         .copied()
 }
@@ -862,6 +896,9 @@ pub(crate) fn change(
     }
     if radio::CHANGES.contains(&name) {
         return Some(radio::carry_out(runner, name, target, args));
+    }
+    if shaders::CHANGES.contains(&name) {
+        return Some(shaders::carry_out(runner, name, target, args));
     }
     CHANGES
         .contains(&name)

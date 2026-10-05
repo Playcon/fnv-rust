@@ -848,6 +848,15 @@ pub fn run_scripts(
     // Quest positions, triggers and saves must follow the collision capsule.
     let feet = player.position_for_view(eye);
     state.player_position = Some(feet);
+    // What has 3D now (`PlayMagicShaderVisuals` needs it): the rendered
+    // placed objects, the people about and the player.
+    let mut loaded: std::collections::HashSet<FormId> = object_bounds
+        .as_deref()
+        .map(|b| b.0.keys().map(|&r| FormId(r)).collect())
+        .unwrap_or_default();
+    loaded.insert(PLAYER_REF);
+    loaded.extend(talkers.0.iter().map(|t| t.reference));
+    world::more_functions::report_loaded(state, loaded);
     match &exterior {
         Some(e) => {
             state.player_world = Some(e.grid.world.form_id);
