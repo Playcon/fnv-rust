@@ -167,6 +167,67 @@ carried out (172 before).
 Pip-Boy Radio list, stations made from activators' or actors' radio templates, tuning with
 no station given, and the default topic. Nothing has been compared in the original game.
 
+## Animations playing (`IsAnimPlaying`)
+
+Dead Money asks 26 times, on placed objects only: speakers, gates and Elijah's talking
+activator (`LinkedRef.IsAnimPlaying Forward`, `Backward`, `Left`, `Right`), mostly to
+avoid starting a group that's already playing.
+
+**traced** (`005c14a0`): on a reference with actor animation data (vtable +0x1e4), its
+eight sequence slots. Otherwise the model's controller manager: with a group, the
+sequence named after the group (`00438170` → `0047a520`) is checked; without one, any
+sequence. "Playing" is the sequence's state (+0x44, read by `008041a0`) not being 0
+(inactive). No 3D loaded: 0. **Inference**: the only code that sets a sequence inactive is
+its deactivation on request (`00a35030`) and the end of an ease-out; nothing does it when
+a clamped sequence reaches its end. So a played `Forward` keeps counting as playing until
+another sequence replaces it. Not compared in the game.
+
+**in code**: the viewer reports each frame the sequences active on placed objects
+(`world::more_functions::report_sequences`, from `move_pieces`): a script's `PlayGroup`
+sequence, a door's `Open`/`Close`, or the model's running start-up sequences (ones holding
+a frame aren't counted: a guess). `IsAnimPlaying` answers from that report, comparing
+group names without case. People's animation data isn't carried out (the script stops, as
+before). Test: `objects_animations_playing`. nvinspect: 179 of 199.
+
+## Line of sight (`GetLineOfSight`)
+
+42 uses in 6 scripts. **traced** (`005c1ce0` → `0059c990`): the caller must be an actor
+and the target given; otherwise 0.
+
+* **The player asking** (caller `011dea3c`): first whether the target is in view (its 3D
+  bound against the camera, `004b5fc0`, or `00444ed0` with a bound test). In view, rays
+  are cast (collision layer 0x25, `SpecificItemCollector`) from the camera position to the
+  target at 0.75, 0.5 and 0.25 of its bound height (max z − min z, vtable +0x1dc/+0x1d8)
+  above its position; a ray hitting nothing or the target itself gives 1. Otherwise the
+  actor test below decides.
+* **Anyone else** (`0088b880(0, target, 1, 0, 0)`): the target needs 3D. An actor
+  target: the caller's AI process answers (vtable +0x2cc; not traced: probably its
+  detection line of sight). Any other target: a view-cone test (`0088c570`), then rays
+  from the caller's eye (position + eye height, `008be940`) to the target at 0.75, 0.5
+  and 0.25 of its bound height (scaled, `00567400`; an actor's head and torso points
+  first), with the same hit rule.
+* With the console's debug flag, it prints "sees" or "can't see".
+
+Dead Money's uses: `Player.GetLOS` on Ghost People (36: the camera path) and
+`HoloA/B/C.GetLOS Player`, `NVDLC01DeanRef.GetLOS Player` (16: the actor test). The actor
+test's process answer is the `HighProcess`'s (`008f6930`): its detection data on the target
+(vtable +0x504), byte +0x1e, the line of sight its last detection run found; other
+processes (`008d0510`) say 0. `005723b0` is the distance between the two (must exceed 2;
+the exact comparison is unconfirmed).
+
+**in code** (`crates/world/src/sight.rs`, test `line_of_sight`): the rules above in the
+world. The viewer answers what they ask through `world::sight::Sight`, given to the
+`Runner` that runs placed objects' and quests' scripts each frame
+(`viewer/src/sight.rs`): a reference's bound (placed objects' rendered bounds; people's
+collision shape, a stand-in for their model's bound), the camera's position and view (any
+corner or the middle of the box inside the frustum), and rays through the cell's
+collision. nv-rs's collision doesn't know which object a ray hit, so a ray stopping where
+it enters the target's box counts as hitting the target (a stand-in). The viewer's
+detection runs report their line of sight (`report_detection_sight`), which the actor
+test reads. Not carried out: an object target for someone other than the player (view
+cone `0088c570` and rays from the eyes), the player's test headless, and conditions
+(`CTDA`) asking it. Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

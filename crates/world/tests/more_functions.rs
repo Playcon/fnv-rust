@@ -718,3 +718,140 @@ fn the_pipboy_radio_and_its_stations() {
     assert_eq!(back.more.radio, state.more.radio);
     assert_eq!(back.more.radio.tuned, Some(FormId(TALKER_REF)));
 }
+
+#[test]
+fn objects_animations_playing() {
+    let (_data, order) = order("more-anim");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let q = |state: &mut GameState, e: &str| ask(&order, &scripts, state, e);
+    // Before the viewer reports anything, nothing has 3D: nothing plays.
+    assert_eq!(q(&mut state, "BarrelRef.IsAnimPlaying"), 0.0);
+    more::report_sequences(
+        &mut state,
+        [
+            (FormId(BARREL_REF), vec!["SpecialIdle".to_string()]),
+            (FormId(RADIO_REF), vec!["Forward".to_string()]),
+            (FormId(CRATE_REF), Vec::new()),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    assert_eq!(q(&mut state, "BarrelRef.IsAnimPlaying"), 1.0);
+    assert_eq!(q(&mut state, "BarrelRef.IsAnimPlaying Forward"), 0.0);
+    // Group names compare without case (Dead Money writes `Forward`).
+    assert_eq!(q(&mut state, "RadioRef.IsAnimPlaying forward"), 1.0);
+    assert_eq!(q(&mut state, "RadioRef.IsAnimPlaying Backward"), 0.0);
+    assert_eq!(q(&mut state, "CrateRef.IsAnimPlaying"), 0.0);
+    // People's animation data isn't carried out: the script stops.
+    assert_eq!(q(&mut state, "PersonRef.IsAnimPlaying"), STOPPED);
+}
+
+/// A camera and collision for `GetLineOfSight`: boxes for the people and
+/// the barrel, everything in view or nothing, and every ray stopped at
+/// the same distance (or none).
+struct TestSight {
+    in_view: bool,
+    hit: Option<f32>,
+}
+
+impl world::sight::Sight for TestSight {
+    fn bound(&self, r: FormId) -> Option<([f32; 3], [f32; 3])> {
+        let at = match r.0 {
+            PERSON_REF => [0.0, 0.0, 0.0],
+            HERO_REF => [0.0, 200.0, 0.0],
+            BARREL_REF => [100.0, 0.0, 0.0],
+            _ => return None,
+        };
+        Some((
+            [at[0] - 20.0, at[1] - 20.0, at[2]],
+            [at[0] + 20.0, at[1] + 20.0, at[2] + 120.0],
+        ))
+    }
+    fn camera(&self) -> Option<[f32; 3]> {
+        Some([0.0, 100.0, 120.0])
+    }
+    fn in_view(&self, _lo: [f32; 3], _hi: [f32; 3]) -> bool {
+        self.in_view
+    }
+    fn ray(&self, _from: [f32; 3], _to: [f32; 3]) -> Option<f32> {
+        self.hit
+    }
+}
+
+fn ask_seeing(
+    order: &LoadOrder,
+    scripts: &ScriptCache,
+    state: &mut GameState,
+    sight: &TestSight,
+    expr: &str,
+) -> f32 {
+    state.globals.insert(FormId(VALUE), STOPPED);
+    Runner::new(order, scripts, state)
+        .with_sight(sight)
+        .run_source(&format!("set TestValue to {expr}"), None, None);
+    state.globals[&FormId(VALUE)]
+}
+
+#[test]
+fn line_of_sight() {
+    let (_data, order) = order("more-sight");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let clear = TestSight {
+        in_view: true,
+        hit: None,
+    };
+    let walled = TestSight {
+        in_view: true,
+        hit: Some(10.0),
+    };
+    let q =
+        |state: &mut GameState, s: &TestSight, e: &str| ask_seeing(&order, &scripts, state, s, e);
+    // The player: in view and a ray gets through.
+    assert_eq!(q(&mut state, &clear, "Player.GetLineOfSight HeroRef"), 1.0);
+    // Out of view: no, however clear.
+    let away = TestSight {
+        in_view: false,
+        hit: None,
+    };
+    assert_eq!(q(&mut state, &away, "Player.GetLOS HeroRef"), 0.0);
+    // A ray stopped where it reaches the hero's box hit the hero (its
+    // 0.75 ray from (0, 100, 120) to (0, 200, 90) enters the box 83.5
+    // units along); stopped well short, a wall.
+    let at_box = TestSight {
+        in_view: true,
+        hit: Some(84.0),
+    };
+    assert_eq!(q(&mut state, &at_box, "Player.GetLOS HeroRef"), 1.0);
+    let short = TestSight {
+        in_view: true,
+        hit: Some(50.0),
+    };
+    assert_eq!(q(&mut state, &short, "Player.GetLOS HeroRef"), 0.0);
+    // Walled off, the player's own detection data decides.
+    assert_eq!(q(&mut state, &walled, "Player.GetLOS HeroRef"), 0.0);
+    more::report_detection_sight(&mut state, PLAYER_REF, FormId(HERO_REF), true);
+    assert_eq!(q(&mut state, &walled, "Player.GetLOS HeroRef"), 1.0);
+    // No 3D: not seen.
+    assert_eq!(q(&mut state, &clear, "Player.GetLOS DogRef"), 0.0);
+
+    // Someone else: their last detection run's line of sight.
+    assert_eq!(q(&mut state, &clear, "HeroRef.GetLOS PersonRef"), 0.0);
+    more::report_detection_sight(&mut state, FormId(HERO_REF), FormId(PERSON_REF), true);
+    assert_eq!(q(&mut state, &clear, "HeroRef.GetLOS PersonRef"), 1.0);
+    // The caller must be an actor.
+    assert_eq!(q(&mut state, &clear, "BarrelRef.GetLOS Player"), 0.0);
+    // Not carried out: an object target for someone else, and the player
+    // headless (no camera).
+    assert_eq!(q(&mut state, &clear, "HeroRef.GetLOS BarrelRef"), STOPPED);
+    assert_eq!(
+        ask(&order, &scripts, &mut state, "Player.GetLOS HeroRef"),
+        STOPPED
+    );
+    // Headless, someone else's test still answers from detection.
+    assert_eq!(
+        ask(&order, &scripts, &mut state, "HeroRef.GetLOS PersonRef"),
+        1.0
+    );
+}

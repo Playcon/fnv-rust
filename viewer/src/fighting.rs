@@ -264,6 +264,10 @@ pub(crate) fn detect(n: &Noticing, state: &mut GameState, walker: &mut Walker, o
             }
         }
     }
+    // Kept with the detection data, for `GetLineOfSight` (`008f6930`).
+    for &(r, _, sight, _) in &values {
+        world::more_functions::report_detection_sight(state, me, r, sight);
+    }
     let noticed_min = s("fSneakNoticedMin", -20.0);
     let in_combat = state.combat.contains_key(&me);
     let mut start = None;

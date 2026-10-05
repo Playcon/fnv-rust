@@ -155,6 +155,14 @@ pub struct State {
     pub all_visible: bool,
     /// What the viewer last saw of people (not saved).
     pub seen: HashMap<FormId, Seen>,
+    /// The sequences active on placed objects' models this frame, by
+    /// reference, as the viewer last reported them ([`report_sequences`];
+    /// not saved). An object missing here has no 3D loaded.
+    pub sequences: HashMap<FormId, Vec<String>>,
+    /// The line of sight each actor's last detection run found to another
+    /// (`GetLineOfSight` asks it, [`crate::sight`]), by (who, whom), as the
+    /// viewer reports it ([`report_detection_sight`]; not saved).
+    pub detection_sight: HashMap<(FormId, FormId), bool>,
     /// The menu open now, while its `MenuMode` blocks run or the viewer
     /// shows it (not saved).
     pub menu_open: Option<u16>,
@@ -246,6 +254,20 @@ pub fn report(state: &mut GameState, who: FormId, seen: Seen) {
     state.more.seen.insert(who, seen);
 }
 
+/// The viewer tells which sequences are active on each placed object's
+/// model this frame (`NiControllerSequence` state, +0x44, not inactive),
+/// replacing the last report: a script's `PlayGroup` sequence, held at its
+/// end once played, or the ones the model plays from the start.
+pub fn report_sequences(state: &mut GameState, sequences: HashMap<FormId, Vec<String>>) {
+    state.more.sequences = sequences;
+}
+
+/// The viewer tells what `who`'s detection run found of `other`: whether
+/// it had a line of sight (kept with its detection data, `008f6930`).
+pub fn report_detection_sight(state: &mut GameState, who: FormId, other: FormId, sight: bool) {
+    state.more.detection_sight.insert((who, other), sight);
+}
+
 /// The functions answered ([`value`]), by the game's own names.
 pub const READS: &[&str] = &[
     "GetIsGhost",
@@ -282,6 +304,7 @@ pub const READS: &[&str] = &[
     "GetFactionRankDifference",
     "IsCombatTarget",
     "IsIdlePlaying",
+    "IsAnimPlaying",
 ];
 
 /// The functions that change things ([`change`]), by the game's own names.
@@ -328,7 +351,12 @@ pub const CHANGES: &[&str] = &[
 
 /// Every function here.
 pub fn handled() -> impl Iterator<Item = &'static str> {
-    READS.iter().chain(CHANGES).chain(radio::CHANGES).copied()
+    READS
+        .iter()
+        .chain(CHANGES)
+        .chain(radio::CHANGES)
+        .chain(crate::sight::FUNCTIONS)
+        .copied()
 }
 
 /// The game's form type numbers (the byte at form +4), by record type:
@@ -718,6 +746,29 @@ fn read(facts: &Facts, name: &str, on: Option<FormId>, args: &[Value]) -> Option
             let who = on?;
             flag(actor(who) && s.more.seen.get(&who).is_some_and(|x| x.idle_playing))
         }
+        // `005c14a0`: on an object, whether its model's sequence for the
+        // group (looked up by the group's name, `00438170` →
+        // `0047a520`) is active, or without a group any of them
+        // (`00495d00`/`00495d20`); "active" is the sequence's state
+        // (+0x44, read by `008041a0`) not 0. Nothing in the executable
+        // deactivates a clamped sequence at its end (only `00a35030`, on
+        // request, or an ease-out), so a played `Forward` stays active
+        // until another sequence replaces it. No 3D loaded: 0. People's
+        // animation data (vtable +0x1e4: eight sequence slots) aren't
+        // carried out.
+        "IsAnimPlaying" => {
+            let r = on?;
+            if actor(r) {
+                return None;
+            }
+            let playing = s.more.sequences.get(&r);
+            flag(match arg(0) {
+                Value::Text(group) => {
+                    playing.is_some_and(|v| v.iter().any(|n| n.eq_ignore_ascii_case(&group)))
+                }
+                _ => playing.is_some_and(|v| !v.is_empty()),
+            })
+        }
         // `005a53e0` → `008bc700`: the caller is fighting and targets this
         // one.
         "IsCombatTarget" => {
@@ -803,6 +854,11 @@ pub(crate) fn change(
         // The script's version (`005deef0`): completed or recurred.
         let c = args.first().map(Value::form).filter(|f| f.0 != 0);
         return Some(c.map(|c| flag(challenges::completed_for_scripts(runner.state, c))));
+    }
+    if name == "GetLineOfSight" {
+        // `005c1ce0`: on the caller, with whom it looks for.
+        let whom = args.first().map(Value::form).unwrap_or(FormId(0));
+        return Some(crate::sight::line_of_sight(runner, target, whom));
     }
     if radio::CHANGES.contains(&name) {
         return Some(radio::carry_out(runner, name, target, args));

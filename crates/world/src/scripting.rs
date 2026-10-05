@@ -2140,6 +2140,9 @@ pub struct Runner<'a> {
     pub owner: Option<FormId>,
     /// `GetSecondsPassed`.
     pub seconds_passed: f32,
+    /// The viewer's camera and collision, for `GetLineOfSight`
+    /// ([`crate::sight`]); none headless.
+    pub sight: Option<&'a dyn crate::sight::Sight>,
     depth: u8,
 }
 
@@ -2152,8 +2155,15 @@ impl<'a> Runner<'a> {
             this: None,
             owner: None,
             seconds_passed: 0.0,
+            sight: None,
             depth: 0,
         }
+    }
+
+    /// With the viewer's camera and collision for `GetLineOfSight`.
+    pub fn with_sight(mut self, sight: &'a dyn crate::sight::Sight) -> Self {
+        self.sight = Some(sight);
+        self
     }
 
     fn facts(&self) -> Facts<'_> {

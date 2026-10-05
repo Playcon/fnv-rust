@@ -67,6 +67,7 @@ pub mod sandbox;
 pub mod save;
 pub mod script_functions;
 pub mod scripting;
+pub mod sight;
 pub mod social;
 pub mod sound;
 pub mod stats;

@@ -34,6 +34,7 @@ mod pipboy;
 mod player_idle;
 mod report;
 mod scripts;
+mod sight;
 mod sitting;
 mod sounds;
 mod terrain;
@@ -391,8 +392,15 @@ fn move_pieces(
     door_poses: Res<doors::DoorPoses>,
     mut pieces: Query<(&mut Moving, &scripts::PlacedRef, &mut Transform)>,
     mut materials: ResMut<Assets<GameLitMaterial>>,
+    mut dialogue: ResMut<crate::dialogue::DialogueState>,
 ) {
     let seconds = time.elapsed_secs();
+    // The sequences active on each object, for `IsAnimPlaying`: a
+    // script's group (held at its end once played), a door's `Open` or
+    // `Close`, or the ones its model plays from the start (those holding a
+    // frame aren't counted: a guess).
+    let mut active: std::collections::HashMap<esm::FormId, Vec<String>> =
+        std::collections::HashMap::new();
     for (mut piece, placed, mut transform) in &mut pieces {
         let group = groups
             .0
@@ -404,6 +412,26 @@ fn move_pieces(
             .door
             .filter(|_| group.is_none())
             .and_then(|d| door_poses.0.get(&d).copied());
+        let names = active.entry(esm::FormId(placed.0)).or_default();
+        let mut add = |name: &str| {
+            if !names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                names.push(name.to_string());
+            }
+        };
+        let motion = &piece.motion.motion;
+        match (group, door_pose) {
+            (Some((name, _)), _)
+                if motion.all.iter().any(|s| s.name.eq_ignore_ascii_case(name)) =>
+            {
+                add(name)
+            }
+            (None, Some((opening, _))) => add(if opening { "Open" } else { "Close" }),
+            _ => {
+                for p in motion.sequences.iter().filter(|p| p.runs) {
+                    add(&p.sequence.name);
+                }
+            }
+        }
         let now = match door_pose {
             Some((opening, at)) => cellview::piece_in_sequence(
                 &piece.motion,
@@ -435,6 +463,7 @@ fn move_pieces(
         }
         piece.shown = shown;
     }
+    world::more_functions::report_sequences(&mut dialogue.0, active);
 }
 
 /// A piece that turns to face the camera (`cellview::MeshData::billboard`):
