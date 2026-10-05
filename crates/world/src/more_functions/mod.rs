@@ -196,6 +196,10 @@ pub struct State {
     /// References with 3D loaded now (in an attached cell), as the viewer
     /// last reported them ([`report_loaded`]; not saved).
     pub loaded: HashSet<FormId>,
+    /// Whether each person's spine faces up (`IsFacingUp`), as the viewer
+    /// last reported it ([`report_facing_up`]; not saved). Someone missing
+    /// has no 3D.
+    pub facing_up: HashMap<FormId, bool>,
     /// Effect shaders scripts put on references ([`shaders`]; not saved).
     pub shader_visuals: Vec<shaders::ShaderVisual>,
     /// The player's Caravan cards ([`carried`]), saved.
@@ -332,6 +336,13 @@ pub fn report_loaded(state: &mut GameState, loaded: HashSet<FormId>) {
     state.more.loaded = loaded;
 }
 
+/// The viewer tells, for each person with 3D, whether their spine node
+/// (`Bip01 Spine`, else `Bip01 Spine01`) faces up: its world rotation's
+/// [2][1] above 0 (`00c6b7b0`, the node's +0x84). Replaces the last report.
+pub fn report_facing_up(state: &mut GameState, facing: HashMap<FormId, bool>) {
+    state.more.facing_up = facing;
+}
+
 /// The viewer tells what `who`'s detection run found of `other`: whether
 /// it had a line of sight (kept with its detection data, `008f6930`).
 pub fn report_detection_sight(state: &mut GameState, who: FormId, other: FormId, sight: bool) {
@@ -348,6 +359,7 @@ pub const READS: &[&str] = &[
     "GetBroadcastState",
     "IsLimbGone",
     "GetCauseofDeath",
+    "IsFacingUp",
     "IsInCriticalStage",
     "IsSneaking",
     "IsRunning",
@@ -648,6 +660,13 @@ fn read(facts: &Facts, name: &str, on: Option<FormId>, args: &[Value]) -> Option
                 Some(&c) if actor(who) => f64::from(c),
                 _ => -1.0,
             }
+        }
+        // `005cb720` → `005a0710`: on a person or creature, 1 when the
+        // spine node faces up ([`report_facing_up`]) or isn't there (no
+        // 3D, or neither node in it); 0 for anything else.
+        "IsFacingUp" => {
+            let who = on?;
+            flag(actor(who) && s.more.facing_up.get(&who).copied().unwrap_or(true))
         }
         // `005a2910`: the actor's critical stage is this one.
         "IsInCriticalStage" => {

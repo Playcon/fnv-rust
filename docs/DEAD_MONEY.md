@@ -435,6 +435,38 @@ pitch follows nv-rs's placement convention (positive X tips the nose down), not 
 in the game. Objects made by `PlaceAtMe` can't fire yet. Nothing compared in the
 original game.
 
+## Conditions (`GetVATSValue`, `IsFacingUp`)
+
+4 conditions, no script calls. The Hobbler perk (`NVDLC01Hobbler`) asks `GetVATSValue 5`
+with the left and right leg's actor values (29, 30). The ghost people's get-up idles
+(`GhostGetUpFaceUp`, `GhostGetUpFaceDown`) ask `IsFacingUp`.
+
+**traced**:
+
+* `GetVATSValue` (`00594dc0`, conditions `00594e40`): the attack V.A.T.S. is playing
+  (the player's, `009c71c0`, or an NPC's, `007f5280`), by case. Case 5 is the attack's
+  body part actor value against the number. nv-rs already answered it
+  (`world::vats::function_value`), but the V.A.T.S. functions were missing from
+  `scripting::HANDLED`, so `nvinspect` counted them as not carried out. Cases 2 and 9
+  compare forms with TESForm vtable +0x10c (`00603880` for people), which gives 0 when
+  they're the same. nv-rs's equality checks match that.
+* `IsFacingUp` (`005cb720` → `005a0710`): on a person or creature, finds a node in its
+  3D: first the name `004b7920` keeps at `011c61b4` ("Bip01 Spine"), then "Bip01
+  Spine01". With a node, the answer is 1 when its world rotation's [2][1] (the node's
+  +0x84) is above 0 (`00c6b7b0`). With no 3D or no node, the answer is 1 too. Anything
+  else gives 0.
+
+**in code**: the ten `GetVATS…` functions are in `HANDLED`. `IsFacingUp` is a read in
+`world::more_functions`, answered from `report_facing_up`. The viewer's `animate_actors`
+works out each pose's spine (`actors::spine_up`), and `report_facing_up` sends it every
+frame. A person's placement turns only about Z, which leaves that row of the rotation
+alone. Tests: `facing_up_as_the_viewer_reports_it`, `the_spine_faces_up_by_its_rotation`.
+nvinspect: 195 of 199.
+
+**Not done**: nv-rs has no knockdowns or getting up, so the get-up idles aren't played
+yet; a ragdoll asleep keeps its last report. The player isn't reported (counts as no 3D:
+1). Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

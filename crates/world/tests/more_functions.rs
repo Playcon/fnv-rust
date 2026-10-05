@@ -1268,3 +1268,22 @@ fn shots_leave_along_the_objects_facing() {
         "{o:?} {d:?}"
     );
 }
+
+#[test]
+fn facing_up_as_the_viewer_reports_it() {
+    let (_data, order) = order("more-facing");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let q = |state: &mut GameState, e: &str| ask(&order, &scripts, state, e);
+    // No 3D reported: 1; an object: 0.
+    assert_eq!(q(&mut state, "PersonRef.IsFacingUp"), 1.0);
+    assert_eq!(q(&mut state, "BarrelRef.IsFacingUp"), 0.0);
+    more::report_facing_up(
+        &mut state,
+        [(FormId(PERSON_REF), false), (FormId(DOG_REF), true)]
+            .into_iter()
+            .collect(),
+    );
+    assert_eq!(q(&mut state, "PersonRef.IsFacingUp"), 0.0);
+    assert_eq!(q(&mut state, "DogRef.IsFacingUp"), 1.0);
+}

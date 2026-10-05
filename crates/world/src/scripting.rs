@@ -3692,6 +3692,17 @@ pub const HANDLED: &[&str] = &[
     "StopQuest",
     "GetHitLocation",
     "GetKillingBlowLimb",
+    // V.A.T.S. (`world::vats::function_value`).
+    "GetVATSMode",
+    "GetVATSValue",
+    "GetVATSRightAreaFree",
+    "GetVATSLeftAreaFree",
+    "GetVATSBackAreaFree",
+    "GetVATSFrontAreaFree",
+    "GetVATSRightTargetVisible",
+    "GetVATSLeftTargetVisible",
+    "GetVATSBackTargetVisible",
+    "GetVATSFrontTargetVisible",
 ];
 
 #[cfg(test)]
