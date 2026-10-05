@@ -279,6 +279,36 @@ screen, right after the item's script and each frame (`viewer/src/menus.rs`,
 an item with both a script and a sub-menu, whether the sub-menu opens before or after the
 script's back (here: after). Nothing compared in the original game.
 
+## Caravan cards (`GetContainer`, `RemoveMe`, `AddCardToPlayer`)
+
+12 calls, all in one script: `NVDLC01CardAddToPlayerScript`, on the Sierra Madre's "Dead
+Man's Hand" cards (a copy of the base game's `CardAddToPlayerScript`). Its `OnAdd` block:
+if `GetContainer` is the player, `AddCardToPlayer` then `RemoveMe`. A card picked up joins
+the player's Caravan cards and leaves the inventory.
+
+**traced** (handlers take the script's item and its containing object):
+
+* `GetContainer` (`005ce5c0`): the containing object when there's an item and a
+  container; else 0.
+* `RemoveMe` (`005b53d0`): with an item and a container, one of the item leaves the
+  container (its RemoveItem, vtable +0x17c, count 1), into the container given if any; for
+  an actor, the equipped instance's extra data (`004bfda0`); the player's inventory is
+  refreshed (`00704af0`). The handler returns failure, which ends the script.
+* `AddCardToPlayer` (`005cf3d0`): the item's base must be a `TESCaravanCard`; it joins the
+  player's cards unless already there (`00969bc0`). Otherwise an error is reported only.
+
+**in code**: `Runner::on_add` runs an item's `OnAdd` blocks (no container named, or this
+one) with the item and its container (`Runner::container`); the viewer runs it when the
+player picks up a placed item. The three functions are in
+`crates/world/src/more_functions/carried.rs`; the cards are saved. Test:
+`caravan_cards_picked_up`. nvinspect: 186 of 199.
+
+**Not done**: `OnAdd` for items arriving other ways (taken from containers, `AddItem`,
+barter): what the game gives their scripts as the item isn't traced. `RemoveMe` doesn't end
+the script (nv-rs's statements can't; Dead Money calls it last); an actor's equipped
+instance isn't told apart. The Caravan game itself and a deck aren't here. Nothing compared
+in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

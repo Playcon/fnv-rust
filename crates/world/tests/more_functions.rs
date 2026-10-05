@@ -944,3 +944,52 @@ fn terminals_go_back_only_while_open() {
     );
     assert_eq!(state.events.iter().filter(|e| **e == back).count(), 2);
 }
+
+#[test]
+fn caravan_cards_picked_up() {
+    let (_data, order) = order("more-cards");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let held = |state: &GameState, holder: FormId, item: u32| {
+        state
+            .items
+            .get(&(holder, FormId(item)))
+            .copied()
+            .unwrap_or(0)
+    };
+    // Outside an item's script there's no container.
+    assert_eq!(
+        ask(&order, &scripts, &mut state, "CardRef.GetContainer"),
+        0.0
+    );
+    // The player picks up a card: its `OnAdd` sees the player as the
+    // container, the card joins their cards and leaves the inventory.
+    state.pick_up(&order, FormId(CARD_REF), FormId(CARD), 1);
+    Runner::new(&order, &scripts, &mut state).on_add(FormId(CARD_REF), PLAYER_REF);
+    assert_eq!(state.globals[&FormId(VALUE)], PLAYER_REF.0 as f32);
+    assert!(state.more.cards.0.contains(&FormId(CARD)));
+    assert_eq!(held(&state, PLAYER_REF, CARD), 0);
+    // Not a card: it isn't added to the cards, but `RemoveMe` still takes
+    // it out.
+    state.pick_up(&order, FormId(CARD_CUP_REF), FormId(CARD_CUP), 1);
+    Runner::new(&order, &scripts, &mut state).on_add(FormId(CARD_CUP_REF), PLAYER_REF);
+    assert!(!state.more.cards.0.contains(&FormId(CARD_CUP)));
+    assert_eq!(held(&state, PLAYER_REF, CARD_CUP), 0);
+    // Into another container: the script returns before anything.
+    state.items.insert((FormId(CRATE_REF), FormId(CARD_CUP)), 1);
+    Runner::new(&order, &scripts, &mut state).on_add(FormId(CARD_CUP_REF), FormId(CRATE_REF));
+    assert_eq!(state.globals[&FormId(VALUE)], CRATE_REF as f32);
+    assert_eq!(held(&state, FormId(CRATE_REF), CARD_CUP), 1);
+    // `RemoveMe` with a container moves the item there.
+    state.items.insert((PLAYER_REF, FormId(CARD_CUP)), 2);
+    let mut runner = Runner::new(&order, &scripts, &mut state);
+    runner.container = Some(PLAYER_REF);
+    runner.run_source("RemoveMe CrateRef", Some(FormId(CARD_CUP_REF)), None);
+    assert_eq!(held(&state, PLAYER_REF, CARD_CUP), 1);
+    assert_eq!(held(&state, FormId(CRATE_REF), CARD_CUP), 2);
+
+    // The cards are kept in a save.
+    let saved = world::save::save(&state, None);
+    let (back, _) = world::save::load(&saved).unwrap();
+    assert_eq!(back.more.cards, state.more.cards);
+}

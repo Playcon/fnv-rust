@@ -326,6 +326,9 @@ fn use_object(
         // Someone else's: stealing (`world::crime`).
         let owner = world::crime::owner_of(order, state, r.reference);
         state.pick_up(order, r.reference, r.base, r.count);
+        // Its script's `OnAdd` blocks (Caravan cards join the player's
+        // cards and leave the inventory).
+        Runner::new(order, cache, state).on_add(r.reference, PLAYER_REF);
         if let Some(owner) = owner.filter(|_| !world::crime::may_take(order, state, owner)) {
             if world::crime::steal(order, state, r.reference, owner) {
                 println!("Seen stealing {}.", counted(r.base, r.count));

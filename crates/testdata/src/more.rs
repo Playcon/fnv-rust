@@ -67,6 +67,13 @@ pub mod ids {
     pub const RADIO_TOPIC: u32 = 0xE17;
     /// An effect shader (`EFSH`) for `PlayMagicShaderVisuals`.
     pub const SHADER: u32 = 0xE18;
+    /// A Caravan card (`CCRD`) and a cup (`MISC`) with the Caravan cards'
+    /// `OnAdd` script (`TestCardScript`), and one of each placed.
+    pub const CARD_SCRIPT: u32 = 0xE19;
+    pub const CARD: u32 = 0xE1A;
+    pub const CARD_CUP: u32 = 0xE1B;
+    pub const CARD_REF: u32 = 0xE3A;
+    pub const CARD_CUP_REF: u32 = 0xE3B;
 }
 
 /// The world, written as `FalloutNV.esm` into a temporary Data folder.
@@ -158,6 +165,30 @@ pub fn more(tag: &str) -> TempData {
     plugin.extend(group(*b"TACT", 0, &radio));
     let mut topic_data = sub(b"FULL", &zstr("Radio topic"));
     topic_data.extend(sub(b"DATA", &[7, 0]));
+    // Caravan cards: the card script's `OnAdd` (as Dead Money's
+    // `NVDLC01CardAddToPlayerScript`), also noting the container.
+    let mut card_script = sub(b"SCHR", &[0; 20]);
+    card_script.extend(sub(
+        b"SCTX",
+        b"scn TestCardScript\nbegin OnAdd\n\tset TestValue to GetContainer\n\tif GetContainer != player\n\t\treturn\n\telse\n\t\tAddCardToPlayer\n\t\tRemoveMe\n\tendif\nend",
+    ));
+    plugin.extend(group(
+        *b"SCPT",
+        0,
+        &named(b"SCPT", CARD_SCRIPT, "TestCardScript", &card_script),
+    ));
+    let mut card = sub(b"FULL", &zstr("Ace of Clubs"));
+    card.extend(sub(b"SCRI", &CARD_SCRIPT.to_le_bytes()));
+    card.extend(sub(b"DATA", &1i32.to_le_bytes()));
+    plugin.extend(group(*b"CCRD", 0, &named(b"CCRD", CARD, "TestCard", &card)));
+    let mut card_cup = sub(b"FULL", &zstr("Lucky cup"));
+    card_cup.extend(sub(b"SCRI", &CARD_SCRIPT.to_le_bytes()));
+    card_cup.extend(sub(b"DATA", &[0; 8]));
+    plugin.extend(group(
+        *b"MISC",
+        0,
+        &named(b"MISC", CARD_CUP, "TestCardCup", &card_cup),
+    ));
     plugin.extend(group(
         *b"EFSH",
         0,
@@ -383,6 +414,24 @@ pub fn more(tag: &str) -> TempData {
         [500.0, 0.0, 0.0],
         [0.0; 3],
         "MarkerRef",
+        &[],
+    ));
+    refs.extend(thing(
+        b"REFR",
+        CARD_REF,
+        CARD,
+        [400.0, 0.0, 0.0],
+        [0.0; 3],
+        "CardRef",
+        &[],
+    ));
+    refs.extend(thing(
+        b"REFR",
+        CARD_CUP_REF,
+        CARD_CUP,
+        [400.0, 100.0, 0.0],
+        [0.0; 3],
+        "CardCupRef",
         &[],
     ));
     let mut xesp = BARREL_REF.to_le_bytes().to_vec();

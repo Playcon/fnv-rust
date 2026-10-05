@@ -2143,6 +2143,10 @@ pub struct Runner<'a> {
     /// The viewer's camera and collision, for `GetLineOfSight`
     /// ([`crate::sight`]); none headless.
     pub sight: Option<&'a dyn crate::sight::Sight>,
+    /// The container an inventory item's script runs in (the game's
+    /// containing object: `GetContainer`, `RemoveMe`), during
+    /// [`Runner::on_add`].
+    pub container: Option<FormId>,
     depth: u8,
 }
 
@@ -2156,6 +2160,7 @@ impl<'a> Runner<'a> {
             owner: None,
             seconds_passed: 0.0,
             sight: None,
+            container: None,
             depth: 0,
         }
     }
@@ -2372,6 +2377,33 @@ impl<'a> Runner<'a> {
         let saved = self.state.action_ref.replace(who);
         self.run_blocks(reference, Some(reference), kind, names_who);
         self.state.action_ref = saved;
+    }
+
+    /// An item that was a placed reference went into `container` (the
+    /// player picked it up): its script's `OnAdd` blocks run, those naming
+    /// no container or this one, with the reference as the item and
+    /// `container` as its containing object. The action reference is left
+    /// as it is. Items arriving other ways (from containers, `AddItem`)
+    /// aren't run here: what the game gives their scripts as the item
+    /// isn't traced.
+    pub fn on_add(&mut self, reference: FormId, container: FormId) {
+        let order = self.order;
+        let names = |b: &script::Block| match b.args.first() {
+            None => true,
+            Some(Arg::Word(w)) => {
+                let id = if w.eq_ignore_ascii_case("player") || w.eq_ignore_ascii_case("playerref")
+                {
+                    Some(PLAYER_REF)
+                } else {
+                    order.form_by_editor_id(w)
+                };
+                id == Some(container)
+            }
+            Some(_) => false,
+        };
+        let saved = self.container.replace(container);
+        self.run_blocks(reference, Some(reference), "onadd", names);
+        self.container = saved;
     }
 
     /// Several events at once, in one run of the reference's script (as

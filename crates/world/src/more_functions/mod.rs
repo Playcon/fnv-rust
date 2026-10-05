@@ -16,6 +16,7 @@
 //! no procedure (as the game's handlers answer for someone without an AI
 //! process).
 
+pub mod carried;
 pub mod challenges;
 pub mod destruction;
 pub mod placed;
@@ -182,6 +183,8 @@ pub struct State {
     pub loaded: HashSet<FormId>,
     /// Effect shaders scripts put on references ([`shaders`]; not saved).
     pub shader_visuals: Vec<shaders::ShaderVisual>,
+    /// The player's Caravan cards ([`carried`]), saved.
+    pub cards: carried::Cards,
     /// The menu open now, while its `MenuMode` blocks run or the viewer
     /// shows it (not saved).
     pub menu_open: Option<u16>,
@@ -394,6 +397,7 @@ pub fn handled() -> impl Iterator<Item = &'static str> {
         .chain(CHANGES)
         .chain(radio::CHANGES)
         .chain(shaders::CHANGES)
+        .chain(carried::FUNCTIONS)
         .chain(crate::sight::FUNCTIONS)
         .copied()
 }
@@ -902,6 +906,9 @@ pub(crate) fn change(
     if radio::CHANGES.contains(&name) {
         return Some(radio::carry_out(runner, name, target, args));
     }
+    if carried::FUNCTIONS.contains(&name) {
+        return Some(carried::carry_out(runner, name, target, args));
+    }
     if shaders::CHANGES.contains(&name) {
         return Some(shaders::carry_out(runner, name, target, args));
     }
@@ -1270,6 +1277,7 @@ pub(crate) fn save_lines(state: &GameState, line: &mut dyn FnMut(String)) {
     placed::save_lines(state, line);
     destruction::save_lines(state, line);
     radio::save_lines(state, line);
+    carried::save_lines(state, line);
 }
 
 /// A saved line back: `None` if the word isn't one of these.
@@ -1279,6 +1287,7 @@ pub(crate) fn load_line(state: &mut GameState, raw: &str) -> Option<Result<(), S
     if let Some(r) = placed::load_line(state, &parts)
         .or_else(|| destruction::load_line(state, &parts))
         .or_else(|| radio::load_line(state, &parts))
+        .or_else(|| carried::load_line(state, &parts))
     {
         return Some(r);
     }
