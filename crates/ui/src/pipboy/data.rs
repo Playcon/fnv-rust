@@ -4,7 +4,7 @@
 //! markers) and the list code fill it.
 //!
 //! Not here yet: the local map (the game renders the place from above into
-//! a picture), notes' audio, challenges, the radio's stations playing, and
+//! a picture), challenges, the radio's stations playing, and
 //! the player's arrow turning with the heading (the menus' `rotateangle`
 //! isn't drawn).
 
@@ -365,6 +365,11 @@ impl DataMenu {
                         out.push(Action::ActiveQuest(q.form));
                     }
                 }
+                3 => {
+                    if let Some(n) = self.notes.selected.and_then(|i| input.notes.get(i)) {
+                        out.push(Action::PlayNote(n.form));
+                    }
+                }
                 _ => {}
             },
             _ => {}
@@ -425,6 +430,11 @@ mod tests {
                 active: false,
                 objectives: vec![("Meet Sunny".into(), true), ("Shoot bottles".into(), false)],
             }],
+            notes: vec![crate::pipboy::NoteLine {
+                form: 0x800,
+                name: "Dog Command Tape".into(),
+                text: String::new(),
+            }],
             ..PipboyInput::default()
         }
     }
@@ -471,6 +481,19 @@ mod tests {
         assert_eq!(d.tab, 4);
         let location = by_id(&ui, d.menu, 0).unwrap();
         assert_eq!(ui.string(location, t::STRING).unwrap(), "Goodsprings");
+    }
+
+    #[test]
+    fn a_note_chosen_in_misc_is_played() {
+        let mut ui = crate::pipboy::tests::ui();
+        let mut d = load(&mut ui);
+        let input = input();
+        d.fill(&mut ui, &input);
+        d.show_tab(&mut ui, 3, &input);
+        assert_eq!(
+            d.key(&mut ui, Key::Activate, &input),
+            [Action::PlayNote(0x800)]
+        );
     }
 
     #[test]

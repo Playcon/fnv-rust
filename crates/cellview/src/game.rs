@@ -362,6 +362,23 @@ impl Game {
         self.scene_of(cell, None)
     }
 
+    /// Placed references that start disabled and that scripts have enabled
+    /// since the place loaded (the gas jets), ready to draw: as when a place
+    /// loads, people, and objects with a model or a light, markers left out.
+    pub fn placed_scene(&self, references: &[FormId]) -> ViewerScene {
+        let (actors, objects): (Vec<_>, Vec<_>) = references
+            .iter()
+            .filter_map(|&r| world::placement_of(&self.order, r))
+            .partition(|p| p.actor.is_some());
+        let mut cell = world::LoadedCell::actors_only(actors);
+        cell.objects = objects
+            .into_iter()
+            .filter(|p| p.model.is_some() || p.light.is_some() || !p.parts.is_empty())
+            .filter(|p| !world::is_marker(p.base, p.base_type, p.model.as_deref()))
+            .collect();
+        self.scene_of(cell, None)
+    }
+
     /// The sun of a worldspace's climate in a weather (see [`SunSprite`]).
     pub fn sun(&self, climate: &world::weather::Climate, weather: FormId) -> Option<SunSprite> {
         let path = assets::texture_path(climate.sun.as_deref()?);

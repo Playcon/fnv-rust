@@ -35,6 +35,9 @@ OPTIONS:
                             flies, keeping the exact eye position given)
     --fps                   print the frame rate every two seconds
     --talk                  start talking to the nearest person once loaded
+    --choose N,N,...        with --talk or a script's talking: pick these
+                            replies in order (as the number keys would),
+                            for playing a conversation through unattended
     --stage QUEST STAGE     set a quest's stage once loaded, as a script
                             would (VCG01 0 starts Doc Mitchell's intro)
     --new-game              start the game: the opening quest (VCG00) from
@@ -150,6 +153,8 @@ pub struct Args {
     pub fps: bool,
     /// Talk to the nearest person once loaded.
     pub talk: bool,
+    /// `--choose`: the replies to pick, in order, as number keys would.
+    pub choose: Vec<usize>,
     /// A quest stage to set once loaded: the quest's editor ID and stage.
     pub stage: Option<(String, u16)>,
     /// A ready-made test character to start as (`world::character`).
@@ -224,6 +229,7 @@ pub fn parse(args: &[String]) -> Result<Option<Args>, String> {
     let mut walk = false;
     let mut fps = false;
     let mut talk = false;
+    let mut choose = Vec::new();
     let mut stage = None;
     let mut new_game = false;
     let mut weapon = None;
@@ -272,6 +278,16 @@ pub fn parse(args: &[String]) -> Result<Option<Args>, String> {
             "--walk" => walk = true,
             "--fps" => fps = true,
             "--talk" => talk = true,
+            "--choose" => {
+                let v = value("--choose")?;
+                choose = v
+                    .split(',')
+                    .map(|n| n.trim().parse::<usize>().ok().filter(|n| *n >= 1))
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or_else(|| {
+                        format!("--choose expects reply numbers like 1,2,1, got '{v}'")
+                    })?;
+            }
             "--stage" => {
                 let quest = value("--stage")?;
                 let n = value("--stage")?;
@@ -350,6 +366,7 @@ pub fn parse(args: &[String]) -> Result<Option<Args>, String> {
             walk,
             fps,
             talk,
+            choose,
             stage,
             character,
             weapon,

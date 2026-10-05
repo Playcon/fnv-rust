@@ -462,6 +462,7 @@ pub struct Around<'w> {
     messages: ResMut<'w, crate::hud::HudMessages>,
     wavs: ResMut<'w, Assets<PcmSound>>,
     markers: Res<'w, crate::map::MapMarkers>,
+    talkers: Res<'w, crate::dialogue::Talkers>,
 }
 
 /// Tab, the light, and the keys while it's up.
@@ -481,6 +482,7 @@ fn pipboy_keys(
         mut requests,
         mut messages,
         markers,
+        talkers,
         ..
     } = around;
     let order = &game.0.order;
@@ -636,9 +638,44 @@ fn pipboy_keys(
                 }
             }
             Action::ActiveQuest(form) => state.active_quest = Some(FormId(form)),
+            // A voice note: its speaker (`SNAM`) says its topic (`TNAM`),
+            // line and result scripts as when a script has them `SayTo`.
+            Action::PlayNote(form) => {
+                let Some((speaker, topic)) = voice_note(order, FormId(form)) else {
+                    continue;
+                };
+                // Whoever of that kind is here says it (the game's own
+                // rules for a note's speaker aren't traced).
+                let Some(who) = talkers.0.iter().find(|t| t.base == speaker) else {
+                    say("There's no one here to play it for.".into());
+                    continue;
+                };
+                state.events.push(world::scripting::Event::Talk {
+                    speaker: who.reference,
+                    to: PLAYER_REF,
+                    topic: Some(topic),
+                    conversation: false,
+                });
+            }
         }
     }
 }
+/// A voice note's speaker (`SNAM`) and topic (`TNAM`); `None` for other
+/// notes (`DATA` 3 is a voice note).
+fn voice_note(order: &esm::LoadOrder, note: FormId) -> Option<(FormId, FormId)> {
+    let rr = order.get(note)?;
+    let record = rr.record().ok()?;
+    if record.get(esm::FourCC::new(b"DATA"))?.data.first() != Some(&3) {
+        return None;
+    }
+    let form = |tag: &[u8; 4]| {
+        let s = record.get(esm::FourCC::new(tag))?;
+        let raw = u32::from_le_bytes(s.data.get(..4)?.try_into().ok()?);
+        Some(rr.plugin.to_global(FormId(raw)))
+    };
+    Some((form(b"SNAM")?, form(b"TNAM")?))
+}
+
 /// Puts it up; false when the menus can't be read.
 fn open(
     pipboy: &mut Pipboy,

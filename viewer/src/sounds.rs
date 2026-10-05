@@ -104,6 +104,23 @@ pub(crate) fn play(
     Some(commands.spawn((AudioPlayer(handle), settings)).id())
 }
 
+/// A voice line's file ready to play: decoded here like every sound (see
+/// [`read_sound`]), `None` when it can't be read.
+pub fn voice_handle(
+    path: &str,
+    bytes: &[u8],
+    wavs: &mut Assets<PcmSound>,
+) -> Option<Handle<PcmSound>> {
+    let pcm = read_sound(path, bytes)
+        .map_err(|e| println!("  couldn't play {path}: {e}"))
+        .ok()?;
+    Some(wavs.add(PcmSound {
+        channels: pcm.channels,
+        rate: pcm.rate,
+        samples: Arc::from(pcm.samples.into_boxed_slice()),
+    }))
+}
+
 /// A sound file's samples: a WAV, or an Ogg Vorbis file (`.ogg`) decoded
 /// here. Bevy's own `.ogg` playback crashed the viewer (a native fault
 /// while playing Dead Money's Villa music; decoding the same files alone is

@@ -22,9 +22,8 @@
 //! aren't placed in the world (no falloff or direction, as in `sounds`).
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use bevy::audio::{AudioPlayer, AudioSource};
+use bevy::audio::AudioPlayer;
 use bevy::prelude::*;
 use esm::FormId;
 use world::dialogue::{Speaker, PLAYER_REF};
@@ -121,7 +120,7 @@ pub struct HitParams<'w, 's> {
     effects: ResMut<'w, HitEffects>,
     sounds: ResMut<'w, SoundRequests>,
     screen: ResMut<'w, crate::effects::Effects>,
-    audio: ResMut<'w, Assets<AudioSource>>,
+    audio: ResMut<'w, Assets<crate::sounds::PcmSound>>,
     cameras: Query<'w, 's, &'static Transform, With<FlyCamera>>,
 }
 
@@ -296,12 +295,11 @@ fn say(p: &mut HitParams, game: &cellview::Game, who: FormId, topic: FormId) {
     let Some(bytes) = game.assets.read(&path).ok().flatten() else {
         return;
     };
-    let source = p.audio.add(AudioSource {
-        bytes: Arc::from(bytes.into_boxed_slice()),
-    });
+    let Some(source) = crate::sounds::voice_handle(&path, &bytes, &mut p.audio) else {
+        return;
+    };
     let (settings, voice) = crate::faces::voice_playback(game, &path, who);
-    p.commands
-        .spawn((AudioPlayer::new(source), settings, voice));
+    p.commands.spawn((AudioPlayer(source), settings, voice));
 }
 
 #[cfg(test)]

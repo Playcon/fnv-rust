@@ -429,6 +429,7 @@ pub fn gather(order: &LoadOrder, state: &GameState, at: &Whereabouts) -> PipboyI
         .notes
         .iter()
         .map(|&n| NoteLine {
+            form: n.0,
             name: record_name(order, n).unwrap_or_else(|| n.to_string()),
             text: record_text(order, n, TNAM).unwrap_or_default(),
         })

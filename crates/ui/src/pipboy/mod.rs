@@ -122,6 +122,7 @@ pub struct QuestLine {
 /// A note (`NOTE` added to the Pip-Boy).
 #[derive(Debug, Clone, PartialEq)]
 pub struct NoteLine {
+    pub form: u32,
     pub name: String,
     pub text: String,
 }
@@ -251,6 +252,8 @@ pub enum Action {
     Travel(u32),
     /// Make a quest the active one.
     ActiveQuest(u32),
+    /// Play a voice note (a `NOTE` of type 3: audio logs, holotapes).
+    PlayNote(u32),
 }
 
 /// A tile found by its `id` in a menu (the menu objects keep their tiles

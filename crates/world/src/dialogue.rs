@@ -602,6 +602,7 @@ pub fn lines_for(order: &LoadOrder, base: FormId, voice: Option<FormId>) -> Vec<
 }
 
 const VTCK: FourCC = FourCC::new(b"VTCK");
+const VNAM: FourCC = FourCC::new(b"VNAM");
 const RNAM_RACE: FourCC = FourCC::new(b"RNAM");
 const ACBS: FourCC = FourCC::new(b"ACBS");
 const SNAM: FourCC = FourCC::new(b"SNAM");
@@ -640,7 +641,12 @@ impl Speaker {
             reference,
             base,
             name: record.full_name(),
-            voice: form(VTCK),
+            // A talking activator's voice type is its VNAM.
+            voice: form(VTCK).or_else(|| {
+                (rr.entry.header.kind.as_bytes() == b"TACT")
+                    .then(|| form(VNAM))
+                    .flatten()
+            }),
             race: form(RNAM_RACE),
             female: record
                 .get(ACBS)

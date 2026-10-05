@@ -1292,6 +1292,18 @@ pub fn run_scripts(
                             Some(Locked::Says(why)) => Some(why),
                         }
                     }
+                    // A talking activator with a voice (Elijah's hologram)
+                    // starts a conversation, as the player's own E would.
+                    Some(k)
+                        if k.as_bytes() == b"TACT"
+                            && base.is_some_and(|b| {
+                                world::dialogue::Speaker::load(order, what, b)
+                                    .is_some_and(|s| s.voice.is_some())
+                            }) =>
+                    {
+                        talk.0 = Some((what, None, true, false));
+                        None
+                    }
                     _ => None,
                 }
             }

@@ -11,9 +11,8 @@
 //! volume wherever the speaker is; the game's 3D sound isn't traced here).
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use bevy::audio::{AudioPlayer, AudioSource};
+use bevy::audio::AudioPlayer;
 use bevy::prelude::*;
 use esm::FormId;
 use world::dialogue::{self, Info, Speaker};
@@ -73,7 +72,7 @@ fn reading_time(text: &str) -> f32 {
 /// A response's voice, if its file is found, with its lip sync.
 fn play_voice(
     commands: &mut Commands,
-    audio: &mut Assets<AudioSource>,
+    audio: &mut Assets<crate::sounds::PcmSound>,
     game: &cellview::Game,
     speaker: FormId,
     info: &Info,
@@ -84,15 +83,9 @@ fn play_voice(
     let voice = Speaker::load(&game.order, speaker, base)?.voice?;
     let path = dialogue::voice_path(&game.order, info, r, voice)?;
     let bytes = game.assets.read(&path).ok()??;
-    let source = audio.add(AudioSource {
-        bytes: Arc::from(bytes.into_boxed_slice()),
-    });
+    let source = crate::sounds::voice_handle(&path, &bytes, audio)?;
     let (settings, voice) = crate::faces::voice_playback(game, &path, speaker);
-    Some(
-        commands
-            .spawn((AudioPlayer::new(source), settings, voice))
-            .id(),
-    )
+    Some(commands.spawn((AudioPlayer(source), settings, voice)).id())
 }
 
 /// Runs one of a line's result scripts on its speaker.
@@ -132,8 +125,8 @@ pub fn say_lines(
     scripts: Res<Scripts>,
     mut state: ResMut<DialogueState>,
     mut lines: ResMut<Lines>,
-    mut audio: ResMut<Assets<AudioSource>>,
-    voices: Query<(), With<AudioPlayer>>,
+    mut audio: ResMut<Assets<crate::sounds::PcmSound>>,
+    voices: Query<(), With<AudioPlayer<crate::sounds::PcmSound>>>,
 ) {
     let now = time.elapsed_secs();
     let lines = &mut *lines;

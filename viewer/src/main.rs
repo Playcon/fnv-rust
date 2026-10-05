@@ -243,7 +243,10 @@ fn main() {
         .init_resource::<dialogue::Talkers>()
         .init_resource::<dialogue::TalkTarget>()
         .init_resource::<dialogue::Conversation>()
-        .insert_resource(dialogue::AutoTalk(args.talk))
+        .insert_resource(dialogue::AutoTalk(
+            args.talk,
+            args.choose.iter().copied().collect(),
+        ))
         .insert_resource(player)
         .insert_resource(walk::CellCollision(physics::Collider::new()))
         .insert_resource(walk::Doors(Vec::new()))
@@ -353,6 +356,7 @@ fn main() {
                     ai::move_offstage,
                     bring_in_people,
                     bring_in_made,
+                    bring_in_enabled,
                     ai::move_actors,
                     scripts::save_and_load,
                     report::report_key,
@@ -762,6 +766,67 @@ fn bring_in_made(
         );
     }
     let scene = game.0.made_scene(new);
+    let lighting = spawner.place_lighting.get();
+    spawner.spawn_with(&scene, lighting);
+}
+
+/// References that start disabled and that scripts have enabled since
+/// the place loaded (the gas jets) come on screen: once a second, those
+/// in the place, within reach outdoors, not drawn yet. A place loaded
+/// afresh draws what is enabled by itself.
+#[allow(clippy::too_many_arguments)]
+fn bring_in_enabled(
+    time: Res<Time>,
+    game: Res<GameFiles>,
+    state: Res<dialogue::DialogueState>,
+    player: Res<walk::Player>,
+    drawn: Query<&scripts::PlacedRef>,
+    mut spawner: Spawner,
+    mut shown: Local<(Option<esm::FormId>, std::collections::HashSet<esm::FormId>)>,
+    mut last: Local<f32>,
+) {
+    let now = time.elapsed_secs();
+    if !player.ready || now - *last < 1.0 {
+        return;
+    }
+    *last = now;
+    let state = &state.0;
+    let order = &game.0.order;
+    let Some(space) = state.player_world.or(state.player_cell) else {
+        return;
+    };
+    if shown.0 != Some(space) {
+        *shown = (Some(space), Default::default());
+    }
+    let mut new = Vec::new();
+    for (&r, &off) in &state.disabled {
+        if off || shown.1.contains(&r) || state.more.placed.refs.contains_key(&r) {
+            continue;
+        }
+        let Some((s, _, p, _)) = state.place(order, r) else {
+            continue;
+        };
+        let far = state.player_world.is_some()
+            && state
+                .player_position
+                .is_some_and(|me| (p[0] - me[0]).hypot(p[1] - me[1]) > BRING_IN_REACH);
+        if s != space || far || !world::enabled_now(order, r, &state.disabled) {
+            continue;
+        }
+        if drawn.iter().any(|d| d.0 == r.0) {
+            shown.1.insert(r);
+            continue;
+        }
+        shown.1.insert(r);
+        new.push(r);
+    }
+    if new.is_empty() {
+        return;
+    }
+    for r in &new {
+        println!("{r} comes into view (a script enabled it)");
+    }
+    let scene = game.0.placed_scene(&new);
     let lighting = spawner.place_lighting.get();
     spawner.spawn_with(&scene, lighting);
 }
