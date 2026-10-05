@@ -62,7 +62,7 @@ Whether the present code covers Dead Money's use is unchecked.
 | Starting with an existing character | the DLC expects a finished character; a test route starts from a ready-made one at the entry point | own saves (`world/src/save.rs`); no reading of the game's `.fos` |
 | Scripted intro | a radio broadcast in a bunker, the player knocked out, waking in the Villa | quest scripts and package actions (M1 opening work) |
 | Inventory taken and returned | the player's gear removed at the start and given back at the end | `RemoveAllItems` and related functions present (`world/src/script_functions.rs`) |
-| Bomb collar | beeps and then explodes near radios and speakers; it is defused by destroying them or moving away | radios present (UI/Pip-Boy); no collar behaviour found |
+| Bomb collar | **checked in the data**: scripts only, no radio engine. Each speaker or radio (`NVDLC01RadioSpeakerSCRIPT`) compares `GetDistance player` with a radius (512 for radios, 768 for speakers) and counts the player in or out of `NVDLC01BombCollarQuest.iNumRadii`; the quest script (`NVDLC01BombCollarQuestSCRIPT`) runs the countdown, beeps (`PlaySound`, `SetRumble`) and the explosion (`PlaceAtMe`, `Kill`), all gated by the global `NVDLC01Collars`. Destroying a speaker (`OnDestructionStageChange`) takes it out of the count | every function those scripts call is carried out; not run end to end yet |
 | The Cloud | an area that damages the player over time | effects and image-space modifiers present; nothing DLC-specific found |
 | Ghost People | stay down only when dismembered or disintegrated | dismemberment present (`world/src/stats.rs`) |
 | Holograms | invulnerable guards that patrol and shoot on sight | nothing found |
@@ -118,6 +118,54 @@ The results fill four things:
 
 Each step follows the usual method: trace, write up here with addresses or record IDs,
 implement with tests, open a pull request, and compare in the original game.
+
+## Radio
+
+Dead Money calls six radio functions nv-rs lacked: the Pip-Boy radio switched off for the
+intro and the trip to the Villa (`PipBoyRadioOff`), Elijah's broadcast on the collar
+(`PipboyRadio Tune`, then `StartRadioConversation`), the Sierra Madre's ambient music
+changing with the story (`StartRadioConversation` on `NVDLC01RadioStationAMBREF`), the
+Starlet hologram at the fountain playing a station (`SetNPCRadio`), and a refresh at the
+start (`ForceRadioStationUpdate`, `ResetPipboyManager`). None of them drives the collar
+(above).
+
+**traced** (`FalloutRadio`, `0083xxxx`; script handlers from the command table at
+`01190910`):
+
+* `PipboyRadio` (`005d7fb0`) takes a word and an optional station. A word starting with
+  `1`, or `enable`/`on`, switches the Pip-Boy radio on (`008324e0`) and tunes it
+  (`00832240`); one starting with `0`, or `disable`/`off`, switches it off; `tune` tunes
+  it. The words are compared without case: Dead Money writes `Tune`.
+* Switching off (`008324e0(0)`, also `PipBoyRadioOff`, `005dc580`) forgets the tuned
+  station (`011dd42c`). The on flag is `011dd434`. A radio-wide "disabled" flag
+  (`011dd436`) makes all of this do nothing; what sets it isn't traced.
+* Tuning only works while on. The station object is found in the radio's list or made
+  (`00832cb0`): a reference whose base is a talking activator (form type 0x16) is a
+  station itself; activators, NPCs, creatures and levelled lists that aren't actors take
+  their base's radio template (`004fd3c0` → `008356e0`). When none can be made, the radio
+  switches off. A new station's first update is staggered by a random 0–30,000 ms
+  (`00944460`).
+* `StartRadioConversation` (`005d82a0` → `00835be0`), on a station, ends what it was
+  playing and starts the topic given, or the default (`0061a2d0(7, 0)`: the first entry
+  of the radio dialogue list). Its next update is 50 ms later. If the Pip-Boy is on and
+  tuned to that station, the radio sound restarts.
+* `SetNPCRadio` (`005d8100`), on an actor with a station: 1 plays the station through
+  that actor (`00835810`), 0 stops it (`00835980`), other values do nothing.
+* `ForceRadioStationUpdate` (`005d8280` → `00832ad0(1)`) makes the stations update at
+  once instead of at `iRadioUpdateInterval`.
+* `ResetPipboyManager` (`005db490`) sets the player's Pip-Boy manager's reset flag
+  (+0x16c); its reader isn't traced.
+
+**in code** (`crates/world/src/more_functions/radio.rs`, test
+`the_pipboy_radio_and_its_stations`): the six functions keep the state above (on, tuned
+station, each station's conversation, actors playing a station, the reset flag), saved
+with the game. With them, nvinspect counts 178 of the 199 functions Dead Money uses as
+carried out (172 before).
+
+**Not done:** what a station plays (the conversation's lines in turn, `RadioConvTask`,
+`008373a0`), signal range and static (`fRadioStaticAtOuterRadiusPct`), the sound and the
+Pip-Boy Radio list, stations made from activators' or actors' radio templates, tuning with
+no station given, and the default topic. Nothing has been compared in the original game.
 
 ## Open questions
 

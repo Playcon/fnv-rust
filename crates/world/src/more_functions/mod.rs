@@ -20,6 +20,7 @@ pub mod challenges;
 pub mod destruction;
 pub mod placed;
 pub mod procedures;
+pub mod radio;
 
 use std::collections::{HashMap, HashSet};
 
@@ -131,6 +132,8 @@ pub struct State {
     pub speakers: HashMap<FormId, FormId>,
     /// Radio stations switched on or off (`SetBroadcastState`), by base.
     pub broadcasting: HashMap<FormId, bool>,
+    /// The Pip-Boy radio and the stations' conversations ([`radio`]).
+    pub radio: radio::Radio,
     /// People's critical stage (actor +0x10c: 1 goo start, 2 goo end, 3
     /// disintegrate start, 4 disintegrate end).
     pub critical_stage: HashMap<FormId, i32>,
@@ -325,7 +328,7 @@ pub const CHANGES: &[&str] = &[
 
 /// Every function here.
 pub fn handled() -> impl Iterator<Item = &'static str> {
-    READS.iter().chain(CHANGES).copied()
+    READS.iter().chain(CHANGES).chain(radio::CHANGES).copied()
 }
 
 /// The game's form type numbers (the byte at form +4), by record type:
@@ -801,6 +804,9 @@ pub(crate) fn change(
         let c = args.first().map(Value::form).filter(|f| f.0 != 0);
         return Some(c.map(|c| flag(challenges::completed_for_scripts(runner.state, c))));
     }
+    if radio::CHANGES.contains(&name) {
+        return Some(radio::carry_out(runner, name, target, args));
+    }
     CHANGES
         .contains(&name)
         .then(|| carry_out(runner, name, target, args))
@@ -1156,14 +1162,16 @@ pub(crate) fn save_lines(state: &GameState, line: &mut dyn FnMut(String)) {
     }
     placed::save_lines(state, line);
     destruction::save_lines(state, line);
+    radio::save_lines(state, line);
 }
 
 /// A saved line back: `None` if the word isn't one of these.
 pub(crate) fn load_line(state: &mut GameState, raw: &str) -> Option<Result<(), String>> {
     let parts: Vec<&str> = raw.split_whitespace().collect();
     let word = *parts.first()?;
-    if let Some(r) =
-        placed::load_line(state, &parts).or_else(|| destruction::load_line(state, &parts))
+    if let Some(r) = placed::load_line(state, &parts)
+        .or_else(|| destruction::load_line(state, &parts))
+        .or_else(|| radio::load_line(state, &parts))
     {
         return Some(r);
     }

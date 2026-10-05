@@ -63,6 +63,8 @@ pub mod ids {
     pub const TICK_EFFECT: u32 = 0xE14;
     pub const TICK_SCRIPT: u32 = 0xE15;
     pub const ELAPSED: u32 = 0xE16;
+    /// A radio topic (`DIAL`, type 7) for `StartRadioConversation`.
+    pub const RADIO_TOPIC: u32 = 0xE17;
 }
 
 /// The world, written as `FalloutNV.esm` into a temporary Data folder.
@@ -152,6 +154,13 @@ pub fn more(tag: &str) -> TempData {
         &sub(b"FULL", &zstr("Talker")),
     ));
     plugin.extend(group(*b"TACT", 0, &radio));
+    let mut topic_data = sub(b"FULL", &zstr("Radio topic"));
+    topic_data.extend(sub(b"DATA", &[7, 0]));
+    plugin.extend(group(
+        *b"DIAL",
+        0,
+        &named(b"DIAL", RADIO_TOPIC, "TestRadioTopic", &topic_data),
+    ));
 
     let mut cup = sub(b"FULL", &zstr("Cup"));
     let mut v = 1i32.to_le_bytes().to_vec();

@@ -643,3 +643,78 @@ fn fights_ranks_and_effect_seconds() {
     );
     assert!(state.unhandled.is_empty(), "{:?}", state.unhandled);
 }
+
+#[test]
+fn the_pipboy_radio_and_its_stations() {
+    let (_data, order) = order("more-radio");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let radio = |state: &GameState| state.more.radio.clone();
+    // Tuning while off does nothing; on with a station tunes to it.
+    run(&order, &scripts, &mut state, "PipboyRadio Tune RadioRef");
+    assert!(!radio(&state).on);
+    run(&order, &scripts, &mut state, "PipboyRadio on RadioRef");
+    assert!(radio(&state).on);
+    assert_eq!(radio(&state).tuned, Some(FormId(RADIO_REF)));
+    // Dead Money's words: `Tune` with a capital (compared without case).
+    run(&order, &scripts, &mut state, "PipboyRadio Tune TalkerRef");
+    assert_eq!(radio(&state).tuned, Some(FormId(TALKER_REF)));
+    // Something that can't be a station switches the radio off.
+    run(&order, &scripts, &mut state, "PipboyRadio tune BarrelRef");
+    assert!(!radio(&state).on);
+    assert_eq!(radio(&state).tuned, None);
+    // A number starting with 1 is on; off forgets the station.
+    run(&order, &scripts, &mut state, "PipboyRadio 1 RadioRef");
+    assert_eq!(radio(&state).tuned, Some(FormId(RADIO_REF)));
+    run(&order, &scripts, &mut state, "PipBoyRadioOff");
+    assert_eq!((radio(&state).on, radio(&state).tuned), (false, None));
+
+    // A station's conversation: the topic given, or the default one;
+    // not a station: nothing.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "RadioRef.StartRadioConversation TestRadioTopic\nTalkerRef.StartRadioConversation\n\
+         BarrelRef.StartRadioConversation TestRadioTopic",
+    );
+    let c = radio(&state).conversations;
+    assert_eq!(c.get(&FormId(RADIO_REF)), Some(&Some(FormId(RADIO_TOPIC))));
+    assert_eq!(c.get(&FormId(TALKER_REF)), Some(&None));
+    assert!(!c.contains_key(&FormId(BARREL_REF)));
+
+    // A person plays a station and stops; 2 and things that aren't
+    // people do nothing.
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "PersonRef.SetNPCRadio 1 RadioRef\nBarrelRef.SetNPCRadio 1 RadioRef\n\
+         HeroRef.SetNPCRadio 1 RadioRef\nHeroRef.SetNPCRadio 2 RadioRef",
+    );
+    let n = radio(&state).npc_radio;
+    assert_eq!(n.get(&FormId(PERSON_REF)), Some(&FormId(RADIO_REF)));
+    assert_eq!(n.get(&FormId(HERO_REF)), Some(&FormId(RADIO_REF)));
+    assert!(!n.contains_key(&FormId(BARREL_REF)));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "HeroRef.SetNPCRadio 0 RadioRef",
+    );
+    assert!(!radio(&state).npc_radio.contains_key(&FormId(HERO_REF)));
+
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "ForceRadioStationUpdate\nResetPipboyManager\nPipboyRadio enable TalkerRef",
+    );
+    assert!(radio(&state).pipboy_reset);
+
+    // Kept in a save.
+    let saved = world::save::save(&state, None);
+    let (back, _) = world::save::load(&saved).unwrap();
+    assert_eq!(back.more.radio, state.more.radio);
+    assert_eq!(back.more.radio.tuned, Some(FormId(TALKER_REF)));
+}
