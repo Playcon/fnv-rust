@@ -1156,3 +1156,42 @@ fn companions_pushes_dispositions_and_causes_of_death() {
     assert_eq!(back.more.dispositions, state.more.dispositions);
     assert_eq!(back.more.cause_of_death, state.more.cause_of_death);
 }
+
+#[test]
+fn dispel_all_spells_leaves_abilities_and_poisons() {
+    let (_data, order) = order("more-dispel");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let on = |state: &GameState, who: u32, source: u32| {
+        state
+            .active_effects
+            .iter()
+            .any(|e| e.target == FormId(who) && e.source == FormId(source))
+    };
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "player.CastImmediateOnSelf TestTick\nplayer.AddSpell TestTickAbility\n\
+         player.CastImmediateOnSelf TestTickPoison\nPersonRef.CastImmediateOnSelf TestTick",
+    );
+    assert!(on(&state, PLAYER_REF.0, TICK));
+    assert!(on(&state, PLAYER_REF.0, TICK_ABILITY));
+    assert!(on(&state, PLAYER_REF.0, TICK_POISON));
+    // Not an actor: nothing, and the script goes on.
+    assert_eq!(
+        ask(&order, &scripts, &mut state, "BarrelRef.DispelAllSpells"),
+        1.0
+    );
+    run(&order, &scripts, &mut state, "player.DispelAllSpells");
+    assert!(!on(&state, PLAYER_REF.0, TICK));
+    assert!(on(&state, PLAYER_REF.0, TICK_ABILITY));
+    assert!(on(&state, PLAYER_REF.0, TICK_POISON));
+    // Only the caller's effects end.
+    assert!(on(&state, PERSON_REF, TICK));
+    assert!(more::actors::dispelled_by_all(&order, FormId(TICK)));
+    assert!(!more::actors::dispelled_by_all(
+        &order,
+        FormId(TICK_ABILITY)
+    ));
+}

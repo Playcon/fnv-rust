@@ -74,6 +74,10 @@ pub mod ids {
     pub const CARD_CUP: u32 = 0xE1B;
     pub const CARD_REF: u32 = 0xE3A;
     pub const CARD_CUP_REF: u32 = 0xE3B;
+    /// `TestTick`'s effect as an ability (`SPEL` type 4) and as a poison
+    /// (5), which `DispelAllSpells` leaves.
+    pub const TICK_ABILITY: u32 = 0xE1C;
+    pub const TICK_POISON: u32 = 0xE1D;
 }
 
 /// The world, written as `FalloutNV.esm` into a temporary Data folder.
@@ -325,11 +329,17 @@ pub fn more(tag: &str) -> TempData {
     efit.extend([0; 4]);
     efit.extend((-1i32).to_le_bytes());
     spell.extend(sub(b"EFIT", &efit));
-    plugin.extend(group(
-        *b"SPEL",
-        0,
-        &named(b"SPEL", TICK, "TestTick", &spell),
-    ));
+    let typed = |kind: u32| {
+        let mut spit = [0u8; 16];
+        spit[..4].copy_from_slice(&kind.to_le_bytes());
+        let mut s = sub(b"SPIT", &spit);
+        s.extend_from_slice(&spell[sub(b"SPIT", &[0; 16]).len()..]);
+        s
+    };
+    let mut spells = named(b"SPEL", TICK, "TestTick", &spell);
+    spells.extend(named(b"SPEL", TICK_ABILITY, "TestTickAbility", &typed(4)));
+    spells.extend(named(b"SPEL", TICK_POISON, "TestTickPoison", &typed(5)));
+    plugin.extend(group(*b"SPEL", 0, &spells));
 
     // The room.
     let thing = |kind: &[u8; 4],

@@ -1,5 +1,5 @@
 //! Companions and actors: `OpenTeammateContainer`, `PushActorAway`,
-//! `SetDisposition` and `GetCauseofDeath` (read in [`super::value`], kept
+//! `SetDisposition`, `DispelAllSpells` and `GetCauseofDeath` (read in [`super::value`], kept
 //! here by [`record_cause`]). Notes: `docs/DEAD_MONEY.md` "Companions and
 //! actors".
 
@@ -13,7 +13,12 @@ use crate::dialogue::PLAYER_REF;
 use crate::scripting::{game_setting, Event, Facts, GameState, Runner, Value};
 
 /// The functions here that change things, by the game's own names.
-pub const FUNCTIONS: &[&str] = &["OpenTeammateContainer", "PushActorAway", "SetDisposition"];
+pub const FUNCTIONS: &[&str] = &[
+    "OpenTeammateContainer",
+    "PushActorAway",
+    "SetDisposition",
+    "DispelAllSpells",
+];
 
 /// The container menu's mode for a companion's things (`00709470`'s fifth
 /// argument; 1 is a container, 2 pickpocketing).
@@ -97,7 +102,51 @@ pub(super) fn carry_out(
             }
             Some(1.0)
         }
+        // `005c2190` → `008249d0`: on a person or creature, every effect
+        // whose source [`dispelled_by_all`] says goes ends (`00804210`;
+        // script effects run their `ScriptEffectFinish`).
+        "DispelAllSpells" => {
+            let who = on?;
+            if is_actor(order, runner.state, who) {
+                let (gone, kept): (Vec<_>, Vec<_>) =
+                    std::mem::take(&mut runner.state.active_effects)
+                        .into_iter()
+                        .partition(|e| e.target == who && dispelled_by_all(order, e.source));
+                runner.state.active_effects = kept;
+                for mut e in gone {
+                    if let Some(script) = e.script.filter(|_| e.started) {
+                        runner.run_effect_script(script, &mut e, "scripteffectfinish", 0.0);
+                    }
+                }
+            }
+            Some(1.0)
+        }
         _ => None,
+    }
+}
+
+/// Whether `DispelAllSpells` ends an effect from this source (`008249d0`,
+/// by the magic item's type, vtable +0x18): a spell (`SPEL` type 0), a
+/// power (2) or lesser power (3), an ingestible (`ALCH`, type 7: chems,
+/// food, drink) or an ingredient (`INGR`, 8); an enchantment (`ENCH`, 6)
+/// only when its type (`ENIT` u32 at 0, the item's +0x34) is 0. Diseases
+/// (1), abilities (4), poisons (5) and addictions (10) stay.
+pub fn dispelled_by_all(order: &LoadOrder, source: FormId) -> bool {
+    let Some(rr) = order.get(source) else {
+        return false;
+    };
+    let first_u32 = |sig: &[u8; 4]| {
+        rr.record()
+            .ok()
+            .and_then(|r| r.get(esm::FourCC::new(sig)).map(|s| s.data.clone()))
+            .filter(|d| d.len() >= 4)
+            .map(|d| u32::from_le_bytes([d[0], d[1], d[2], d[3]]))
+    };
+    match rr.entry.header.kind.as_bytes() {
+        b"SPEL" => matches!(first_u32(b"SPIT"), Some(0 | 2 | 3)),
+        b"ALCH" | b"INGR" => true,
+        b"ENCH" => first_u32(b"ENIT") == Some(0),
+        _ => false,
     }
 }
 

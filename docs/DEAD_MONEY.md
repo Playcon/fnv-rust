@@ -369,6 +369,29 @@ poison or debris that kill, so causes 0 (except grenades), 4 and 5 don't happen.
 +0x220 source flag and the player-caller branch of `PushActorAway` aren't traced.
 Nothing compared in the original game.
 
+## Dispelling (`DispelAllSpells`)
+
+3 calls, all `player.DispelAllSpells ; Removes all chem effects.`: on arrival
+(`NVDLC01IntroSCRIPT`), in `NVDLC01MQ03Script`, and on the way back through the gate to
+the Mojave (`NVDLC01SMGateMojaveSCRIPT`).
+
+**traced**: `DispelAllSpells` (`005c2190`) on a person or creature walks its active
+effects (`008249d0`) and dispels (`00804210`) each
+one whose magic item's type (vtable +0x18) is 0 (a spell), 2 (a power), 3 (a lesser
+power), 7 (an ingestible: `AlchemyItem` `009d2510`) or 8 (an ingredient: `IngredientItem`
+`006e4ba0`). A spell's type is its `SPIT` type (`SpellItem` +0x1c on the magic item,
+`00441110`). An enchantment (type 6, `009d6b60`) goes only when its own type (+0x34, the
+first `ENIT` field) is 0. Diseases (1), abilities (4), poisons (5) and addictions stay.
+Anything else does nothing; it always succeeds.
+
+**in code**: `DispelAllSpells` in `crates/world/src/more_functions/actors.rs`
+(`dispelled_by_all` picks the effects by their source's record); script effects run
+their `ScriptEffectFinish`, as `Dispel` does here. Test:
+`dispel_all_spells_leaves_abilities_and_poisons`. nvinspect: 191 of 199.
+
+**Not done**: equipment enchantments aren't active effects in nv-rs, so the `ENCH` rule
+has nothing to act on yet. Nothing compared in the original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?
