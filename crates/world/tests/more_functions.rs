@@ -1195,3 +1195,76 @@ fn dispel_all_spells_leaves_abilities_and_poisons() {
         FormId(TICK_ABILITY)
     ));
 }
+
+#[test]
+fn traps_vats_targets_and_weapons_fired() {
+    let (_data, order) = order("more-traps");
+    let scripts = ScriptCache::default();
+    let mut state = new_game(&order);
+    let targetable =
+        |state: &GameState, r: u32| more::traps::vats_targetable(&order, state, FormId(r));
+
+    // The barrel is destructible, its base not targetable: SetVATSTarget
+    // turns it each way; the same as the base clears the override.
+    assert!(!targetable(&state, BARREL_REF));
+    run(&order, &scripts, &mut state, "BarrelRef.SetVATSTarget 1");
+    assert!(targetable(&state, BARREL_REF));
+    assert!(state.more.vats_overrides.0.contains(&FormId(BARREL_REF)));
+    run(&order, &scripts, &mut state, "BarrelRef.SetVATSTarget 0");
+    assert!(!targetable(&state, BARREL_REF));
+    assert!(state.more.vats_overrides.0.is_empty());
+    // Not destructible: nothing.
+    assert_eq!(
+        ask(&order, &scripts, &mut state, "RadioRef.SetVATSTarget 1"),
+        1.0
+    );
+    assert!(!targetable(&state, RADIO_REF));
+
+    // FireWeapon: a weapon is fired; anything else only reported.
+    run(&order, &scripts, &mut state, "BarrelRef.FireWeapon TestGun");
+    assert!(state.events.contains(&Event::More(Shown::WeaponFired {
+        from: FormId(BARREL_REF),
+        weapon: FormId(GUN),
+    })));
+    run(
+        &order,
+        &scripts,
+        &mut state,
+        "BarrelRef.FireWeapon TestTick",
+    );
+    let fired = state
+        .events
+        .iter()
+        .filter(|e| matches!(e, Event::More(Shown::WeaponFired { .. })))
+        .count();
+    assert_eq!(fired, 1);
+
+    // The override is kept in a save.
+    run(&order, &scripts, &mut state, "BarrelRef.SetVATSTarget 1");
+    let saved = world::save::save(&state, None);
+    let (back, _) = world::save::load(&saved).unwrap();
+    assert_eq!(back.more.vats_overrides, state.more.vats_overrides);
+}
+
+#[test]
+fn shots_leave_along_the_objects_facing() {
+    let close = |a: [f32; 3], b: [f32; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 1e-4);
+    let q = std::f32::consts::FRAC_PI_2;
+    // Facing north, east (a quarter turn clockwise), and tipped nose down.
+    let (o, d) = more::traps::shot_from([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], 1.0, None);
+    assert!(close(o, [1.0, 2.0, 3.0]) && close(d, [0.0, 1.0, 0.0]));
+    let (_, d) = more::traps::shot_from([0.0; 3], [0.0, 0.0, q], 1.0, None);
+    assert!(close(d, [1.0, 0.0, 0.0]), "{d:?}");
+    let (_, d) = more::traps::shot_from([0.0; 3], [q, 0.0, 0.0], 1.0, None);
+    assert!(close(d, [0.0, 0.0, -1.0]), "{d:?}");
+    // From a node 10 units ahead in the model, the object turned east.
+    let node = nif::math::Transform {
+        translation: [0.0, 10.0, 0.0],
+        ..nif::math::Transform::IDENTITY
+    };
+    let (o, d) = more::traps::shot_from([0.0; 3], [0.0, 0.0, q], 1.0, Some(node));
+    assert!(
+        close(o, [10.0, 0.0, 0.0]) && close(d, [1.0, 0.0, 0.0]),
+        "{o:?} {d:?}"
+    );
+}

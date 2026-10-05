@@ -392,6 +392,49 @@ their `ScriptEffectFinish`, as `Dispel` does here. Test:
 **Not done**: equipment enchantments aren't active effects in nv-rs, so the `ENCH` rule
 has nothing to act on yet. Nothing compared in the original game.
 
+## Traps (`SetVATSTarget`, `FireWeapon`)
+
+3 calls. The two tripwire scripts (`NVDLC01TrapTripwireSCRIPT`,
+`NVDLC01TrapGenericTripwireSCRIPT`) start their `OnActivate` with `setVatsTarget 1`. The
+shotgun trap (`NVDLC01TrapShotgunSCRIPT`) fires `WeapNVSingleShotgun` once when something
+other than the player activates it.
+
+**traced**:
+
+* `SetVATSTarget` (`005daae0`): only on a reference with the flag 0x01000000 (`00452370`;
+  the destruction code `00477d10` asks the same flag, so it marks a destructible
+  reference). It compares the number (not 0 = targetable) with the base's own
+  "V.A.T.S. targetable" flag: its destructible data (`00475400`) `DEST` flags bit 0x01
+  (`00576100`). Equal clears the reference's flag 0x04000000, different sets it
+  (`004846e0`, change flag 1). V.A.T.S. asks `00576070` when it gathers objects
+  (`007f52c0`): destructible, the base's flag, turned the other way by 0x04000000.
+* `FireWeapon` (`005da570`): the argument must be a weapon (form type 0x28), else the game
+  prints "SCRIPTS: FireWeapon in script '…' called with non-weapon parameter.". The
+  reference then fires it through the game's weapon fire (`00523150`, deferred off the
+  main thread by `008c7aa0`). For something that isn't an actor, the shot leaves the
+  object's position along its X (pitch) and Z (heading) angles. When its 3D has a
+  projectile node, it leaves that node instead, along the node's facing. The node is found
+  by `00525700`: the weapon's own node name when it has one (`005256b0`), else
+  `ProjectileNode`, else `##ProjectileNode`.
+
+**in code**: `crates/world/src/more_functions/traps.rs`: the override is kept and saved,
+`vats_targetable` is the V.A.T.S. test, `shot_from` works out the shot.
+`Shown::WeaponFired` goes to the viewer's `combat::object_shots`. That system finds the
+node in the model (`nif::Nif::placed_node`) and fires each pellet within the weapon's
+cone, as the player's shots do. The first person met (the player or someone about, by
+their bounds) before a wall takes the hit (`Runner::hit_at` with the object as attacker;
+they don't fight the object back). Tests: `traps_vats_targets_and_weapons_fired`,
+`shots_leave_along_the_objects_facing`, `finds_a_placed_node_by_name`. nvinspect: 193 of
+199.
+
+**Not done**: nv-rs's V.A.T.S. doesn't target objects yet, so `vats_targetable` isn't
+asked by it. The reference flag 0x01000000 is taken to mean "the base has destruction
+data" (inferred). The weapon's own projectile node name isn't read. Shots are instant
+rays against bounds, not projectiles in flight against hit shapes; the facing's sign for
+pitch follows nv-rs's placement convention (positive X tips the nose down), not checked
+in the game. Objects made by `PlaceAtMe` can't fire yet. Nothing compared in the
+original game.
+
 ## Open questions
 
 * Which DLCs are installed in the maintainer's Data folder (the data pass's `info`)?

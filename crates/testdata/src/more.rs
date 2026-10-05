@@ -78,6 +78,8 @@ pub mod ids {
     /// (5), which `DispelAllSpells` leaves.
     pub const TICK_ABILITY: u32 = 0xE1C;
     pub const TICK_POISON: u32 = 0xE1D;
+    /// A weapon (`WEAP`, no data) for `FireWeapon`.
+    pub const GUN: u32 = 0xE1E;
 }
 
 /// The world, written as `FalloutNV.esm` into a temporary Data folder.
@@ -340,6 +342,7 @@ pub fn more(tag: &str) -> TempData {
     spells.extend(named(b"SPEL", TICK_ABILITY, "TestTickAbility", &typed(4)));
     spells.extend(named(b"SPEL", TICK_POISON, "TestTickPoison", &typed(5)));
     plugin.extend(group(*b"SPEL", 0, &spells));
+    plugin.extend(group(*b"WEAP", 0, &named(b"WEAP", GUN, "TestGun", &[])));
 
     // The room.
     let thing = |kind: &[u8; 4],

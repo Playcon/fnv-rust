@@ -24,6 +24,7 @@ pub mod placed;
 pub mod procedures;
 pub mod radio;
 pub mod shaders;
+pub mod traps;
 
 use std::collections::{HashMap, HashSet};
 
@@ -71,6 +72,8 @@ pub enum Shown {
         from: FormId,
         force: f32,
     },
+    /// `FireWeapon`: a placed object fires a weapon ([`traps::shot_from`]).
+    WeaponFired { from: FormId, weapon: FormId },
     /// `ForceTerminalBack`: the terminal goes back a screen, or closes
     /// from its first.
     TerminalBack,
@@ -203,6 +206,8 @@ pub struct State {
     /// How people died ([`actors::cause`]; the dismembered limbs extra
     /// data's +0x10), saved.
     pub cause_of_death: HashMap<FormId, i32>,
+    /// References `SetVATSTarget` turned ([`traps`]), saved.
+    pub vats_overrides: traps::VatsOverrides,
     /// The menu open now, while its `MenuMode` blocks run or the viewer
     /// shows it (not saved).
     pub menu_open: Option<u16>,
@@ -277,6 +282,9 @@ pub fn describe(order: &LoadOrder, state: &GameState, shown: &Shown) -> String {
         Shown::TeammateContainer { who } => format!("{}'s things open to trade", name(*who)),
         Shown::PushedAway { who, from, force } => {
             format!("{} pushes {} away (force {force})", name(*from), name(*who))
+        }
+        Shown::WeaponFired { from, weapon } => {
+            format!("{} fires {}", name(*from), name(*weapon))
         }
         Shown::Destruction {
             what,
@@ -422,6 +430,7 @@ pub fn handled() -> impl Iterator<Item = &'static str> {
         .chain(shaders::CHANGES)
         .chain(carried::FUNCTIONS)
         .chain(actors::FUNCTIONS)
+        .chain(traps::FUNCTIONS)
         .chain(crate::sight::FUNCTIONS)
         .copied()
 }
@@ -946,6 +955,9 @@ pub(crate) fn change(
     if actors::FUNCTIONS.contains(&name) {
         return Some(actors::carry_out(runner, name, target, args));
     }
+    if traps::FUNCTIONS.contains(&name) {
+        return Some(traps::carry_out(runner, name, target, args));
+    }
     if shaders::CHANGES.contains(&name) {
         return Some(shaders::carry_out(runner, name, target, args));
     }
@@ -1316,6 +1328,7 @@ pub(crate) fn save_lines(state: &GameState, line: &mut dyn FnMut(String)) {
     radio::save_lines(state, line);
     carried::save_lines(state, line);
     actors::save_lines(state, line);
+    traps::save_lines(state, line);
 }
 
 /// A saved line back: `None` if the word isn't one of these.
@@ -1327,6 +1340,7 @@ pub(crate) fn load_line(state: &mut GameState, raw: &str) -> Option<Result<(), S
         .or_else(|| radio::load_line(state, &parts))
         .or_else(|| carried::load_line(state, &parts))
         .or_else(|| actors::load_line(state, &parts))
+        .or_else(|| traps::load_line(state, &parts))
     {
         return Some(r);
     }

@@ -823,3 +823,114 @@ mod tests {
         assert_eq!(bone, Some(4));
     }
 }
+
+/// Weapons placed objects fired (`FireWeapon`: shooter, weapon), for
+/// [`object_shots`].
+#[derive(Resource, Default)]
+pub struct ObjectShots(pub Vec<(FormId, FormId)>);
+
+/// Carries out `FireWeapon` (`00523150` for something that isn't an
+/// actor): the shot leaves the object's projectile node (else its
+/// position) along its facing (`world::more_functions::traps::shot_from`),
+/// each pellet within the weapon's cone as the player's do, to the
+/// projectile's range; the first person met (the player or someone about,
+/// by their bounds) before a wall takes the hit. Not yet: projectiles in
+/// flight, hit shapes (bounds only), the weapon's own node name, objects
+/// made by `PlaceAtMe`.
+#[allow(clippy::too_many_arguments)]
+pub fn object_shots(
+    game: Res<GameFiles>,
+    scripts: Res<Scripts>,
+    mut state: ResMut<DialogueState>,
+    mut shots: ResMut<ObjectShots>,
+    collision: Res<CellCollision>,
+    mut sounds: ResMut<SoundRequests>,
+    rigs: Query<(&Walker, &ActorRig)>,
+    mut nodes: Local<HashMap<String, Option<nif::math::Transform>>>,
+) {
+    use world::more_functions::traps;
+    if shots.0.is_empty() {
+        return;
+    }
+    let order = &game.0.order;
+    let state = &mut state.0;
+    for (from, weapon) in std::mem::take(&mut shots.0) {
+        let (Some(w), Some(p)) = (
+            Weapon::load(order, weapon),
+            world::placement_of(order, from),
+        ) else {
+            continue;
+        };
+        let node = p.model.as_ref().and_then(|m| {
+            *nodes.entry(m.to_ascii_lowercase()).or_insert_with(|| {
+                let bytes = game.0.assets.read(&format!("meshes\\{m}")).ok().flatten()?;
+                let nif = nif::Nif::parse(bytes).ok()?;
+                nif.placed_node(traps::PROJECTILE_NODE)
+                    .or_else(|| nif.placed_node(traps::PROJECTILE_NODE_ALT))
+            })
+        });
+        let (origin, aim) = traps::shot_from(p.position, p.rotation, p.scale, node);
+        let (count, cone) = w.shot(order, None);
+        let reach = w.range(order).unwrap_or(SHOT_RANGE);
+        let pellet = {
+            let mut w = w.clone();
+            w.damage /= count.max(1) as f32;
+            w
+        };
+        if let Some(s) = w.sound {
+            sounds.0.push(s);
+        }
+        let heading = aim[0].atan2(aim[1]);
+        let pitch = aim[2].clamp(-1.0, 1.0).asin();
+        // Who can be met: the player and the people about, by their bounds.
+        let mut bodies: Vec<(FormId, [f32; 3], f32, f32)> = Vec::new();
+        if let Some(feet) = state.player_position {
+            let shape = physics::CharacterShape::PLAYER;
+            bodies.push((PLAYER_REF, feet, shape.radius, shape.height));
+        }
+        for (walker, _) in &rigs {
+            if state.dead.contains(&walker.reference) {
+                continue;
+            }
+            let base =
+                world::scripting::base_of(order, walker.reference).unwrap_or(walker.reference);
+            let (half, height) = body(order, base);
+            bodies.push((
+                walker.reference,
+                walker.position,
+                half * walker.scale,
+                height * walker.scale,
+            ));
+        }
+        for _ in 0..count {
+            let unit = |v: u64| (v % 1_000_000) as f32 / 1_000_000.0;
+            let r = cone * unit(state.roll());
+            let theta = std::f32::consts::TAU * unit(state.roll());
+            let (h, p) = (heading + r * theta.cos(), pitch + r * theta.sin());
+            let dir = [h.sin() * p.cos(), h.cos() * p.cos(), p.sin()];
+            let wall = collision
+                .0
+                .raycast(origin, dir, reach)
+                .map_or(reach, |(d, _)| d);
+            let met = bodies
+                .iter()
+                .filter_map(|(who, feet, radius, height)| {
+                    ray_body(origin, dir, *feet, *radius, *height).map(|d| (d, *who))
+                })
+                .filter(|(d, _)| *d <= wall)
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            let Some((d, target)) = met else {
+                continue;
+            };
+            let hit =
+                Runner::new(order, &scripts.0, state).hit_at(from, target, Some(&pellet), None);
+            // An object isn't someone to fight back against.
+            if state.combat.get(&target) == Some(&from) {
+                state.combat.remove(&target);
+            }
+            if let Some(hit) = hit {
+                println!("{from} shot {target} at {d:.0} units for {:.1}.", hit.dealt);
+            }
+        }
+    }
+}

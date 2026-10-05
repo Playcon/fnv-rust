@@ -1487,3 +1487,37 @@ fn reads_a_models_lights() {
     // Lights aren't drawn meshes.
     assert!(nif.scene().unwrap().meshes.is_empty());
 }
+
+#[test]
+fn finds_a_placed_node_by_name() {
+    // Root (moved, left out when placed) → "Barrel" (up 2) → a hidden
+    // "ProjectileNode" (forward 3).
+    let mut b = Builder::new();
+    b.reserve(3);
+    let moved = Xf {
+        translation: [5.0, 0.0, 0.0],
+        ..NO_XF
+    };
+    let root = b.node("Root", 0, &moved, &[], &[1]);
+    b.set(0, "NiNode", root);
+    let up = Xf {
+        translation: [0.0, 0.0, 2.0],
+        ..NO_XF
+    };
+    let barrel = b.node("Barrel", 0, &up, &[], &[2]);
+    b.set(1, "NiNode", barrel);
+    let ahead = Xf {
+        translation: [0.0, 3.0, 0.0],
+        ..NO_XF
+    };
+    let muzzle = b.node("ProjectileNode", 1, &ahead, &[], &[]);
+    b.set(2, "NiNode", muzzle);
+    let nif = Nif::parse(b.build()).unwrap();
+    let found = nif.placed_node("projectilenode").unwrap();
+    assert!(
+        close(found.translation, [0.0, 3.0, 2.0]),
+        "{:?}",
+        found.translation
+    );
+    assert!(nif.placed_node("##ProjectileNode").is_none());
+}

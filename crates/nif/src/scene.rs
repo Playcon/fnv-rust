@@ -246,6 +246,47 @@ impl Nif {
     }
 
     /// A node's local transform, with the top node's handled as asked.
+    /// A node's transform in the placed model's space (the top node's own
+    /// left out, as [`Self::placed_scene`] does), by name, ignoring case:
+    /// the first met walking down from the roots, hidden or not (the game
+    /// looks nodes up by name, e.g. a weapon's `ProjectileNode`).
+    pub fn placed_node(&self, name: &str) -> Option<Transform> {
+        let mut visited = vec![false; self.blocks().len()];
+        self.roots()
+            .iter()
+            .find_map(|&root| self.find_node(root, name, &Transform::IDENTITY, 0, &mut visited))
+    }
+
+    fn find_node(
+        &self,
+        reference: i32,
+        name: &str,
+        parent: &Transform,
+        depth: usize,
+        visited: &mut [bool],
+    ) -> Option<Transform> {
+        let index = self.valid_index(reference)?;
+        if visited[index] || depth > MAX_DEPTH {
+            return None;
+        }
+        visited[index] = true;
+        let Ok(Block::Node(node)) = self.block(index) else {
+            return None;
+        };
+        let local = if depth == 0 {
+            Transform::IDENTITY
+        } else {
+            node.av.transform
+        };
+        let world = parent.then_child(&local);
+        if node.av.net.name.eq_ignore_ascii_case(name) {
+            return Some(world);
+        }
+        node.children
+            .iter()
+            .find_map(|&c| self.find_node(c, name, &world, depth + 1, visited))
+    }
+
     fn local_transform(
         &self,
         walk: &Walk,

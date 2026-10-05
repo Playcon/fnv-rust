@@ -728,6 +728,15 @@ pub struct HereNow<'w> {
     object_bounds: Option<Res<'w, ObjectBounds>>,
 }
 
+/// The start-up state and requests `run_scripts` works with.
+type Starting<'w> = (
+    ResMut<'w, StartStage>,
+    Res<'w, crate::walk::Player>,
+    ResMut<'w, crate::PendingScene>,
+    ResMut<'w, crate::exterior::PendingExterior>,
+    ResMut<'w, crate::combat::ObjectShots>,
+);
+
 /// Runs the scripts for this frame and carries out what they asked for.
 #[allow(clippy::too_many_arguments)]
 pub fn run_scripts(
@@ -740,12 +749,7 @@ pub fn run_scripts(
     conversation: Res<Conversation>,
     mut talk: ResMut<ScriptedTalk>,
     mut notices: ResMut<Notices>,
-    (mut start_stage, player, mut pending, mut pending_exterior): (
-        ResMut<StartStage>,
-        Res<crate::walk::Player>,
-        ResMut<crate::PendingScene>,
-        ResMut<crate::exterior::PendingExterior>,
-    ),
+    (mut start_stage, player, mut pending, mut pending_exterior, mut object_shots): Starting,
     mut start_commands: ResMut<StartCommands>,
     here_now: HereNow,
     cameras: Query<(&Transform, &FlyCamera, Option<&Projection>)>,
@@ -1315,6 +1319,10 @@ pub fn run_scripts(
                     // ragdoll that gets up again) isn't drawn yet; only the
                     // dead go limp here (`ActorRig::go_limp`).
                     world::more_functions::Shown::PushedAway { .. } => {}
+                    // `FireWeapon`: shot in `combat::object_shots`.
+                    world::more_functions::Shown::WeaponFired { from, weapon } => {
+                        object_shots.0.push((from, weapon));
+                    }
                     _ => {}
                 }
                 None
