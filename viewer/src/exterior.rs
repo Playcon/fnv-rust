@@ -237,6 +237,7 @@ pub fn stream_squares(
     mut cameras: Query<(&mut Transform, &mut FlyCamera, &mut ImageSpaceGrade)>,
     mut state: ResMut<crate::dialogue::DialogueState>,
     mut swing_doors: ResMut<crate::doors::SwingDoors>,
+    walkers: Query<(&crate::ai::Walker, &Visibility)>,
 ) {
     let Some(mut exterior) = exterior else {
         return;
@@ -437,6 +438,16 @@ pub fn stream_squares(
                     .extend(bounds.iter().map(|b| (b.reference, (b.lo, b.hi))));
             }
         }
+        // People brought in since stay on the list (`list_brought_in`).
+        let shown: Vec<_> = walkers
+            .iter()
+            .filter(|(_, v)| **v != Visibility::Hidden)
+            .map(|(w, _)| (w.reference, w.position))
+            .collect();
+        let brought = crate::unlisted(&shown, &talkers, |r| {
+            world::scripting::base_of(&game.0.order, r)
+        });
+        talkers.extend(brought);
         commands.insert_resource(crate::dialogue::Talkers(talkers));
         // The loaded squares' doors that swing (their leaves are put where
         // their doors have them once the collider is in place).

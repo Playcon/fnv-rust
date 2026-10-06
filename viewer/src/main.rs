@@ -644,7 +644,7 @@ fn list_brought_in(
 
 /// The shown people (reference, feet) the list lacks, as talkers; those
 /// whose base can't be found are left out.
-fn unlisted(
+pub(crate) fn unlisted(
     shown: &[(esm::FormId, [f32; 3])],
     listed: &[dialogue::Talker],
     base_of: impl Fn(esm::FormId) -> Option<esm::FormId>,
