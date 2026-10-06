@@ -323,6 +323,7 @@ fn main() {
                     map::find_markers,
                     ai::move_offstage,
                     bring_in_people,
+                    list_brought_in.after(bring_in_people),
                     bring_in_made,
                     ai::move_actors,
                     scripts::save_and_load,
@@ -619,6 +620,46 @@ fn bring_in_people(
         println!("{r} comes into view");
     }
     spawner.spawn_with(&scene, lighting);
+}
+
+/// People brought into a place after it loaded (a companion who came
+/// along, someone a script moved) are drawn and walk, but the place's
+/// list of people to talk to, which the triggers, the sight tests and E
+/// use, was made from what it placed: each shown person it doesn't list
+/// is added, with where they are now.
+fn list_brought_in(
+    game: Res<GameFiles>,
+    walkers: Query<(&ai::Walker, &Visibility)>,
+    mut talkers: ResMut<dialogue::Talkers>,
+) {
+    let shown: Vec<(esm::FormId, [f32; 3])> = walkers
+        .iter()
+        .filter(|(_, v)| **v != Visibility::Hidden)
+        .map(|(w, _)| (w.reference, w.position))
+        .collect();
+    let order = &game.0.order;
+    let missing = unlisted(&shown, &talkers.0, |r| world::scripting::base_of(order, r));
+    talkers.0.extend(missing);
+}
+
+/// The shown people (reference, feet) the list lacks, as talkers; those
+/// whose base can't be found are left out.
+fn unlisted(
+    shown: &[(esm::FormId, [f32; 3])],
+    listed: &[dialogue::Talker],
+    base_of: impl Fn(esm::FormId) -> Option<esm::FormId>,
+) -> Vec<dialogue::Talker> {
+    shown
+        .iter()
+        .filter(|(r, _)| !listed.iter().any(|t| t.reference == *r))
+        .filter_map(|&(reference, position)| {
+            Some(dialogue::Talker {
+                reference,
+                base: base_of(reference)?,
+                position,
+            })
+        })
+        .collect()
 }
 
 /// References scripts made (`PlaceAtMe`, `world::more_functions::placed`)
@@ -2298,6 +2339,31 @@ fn quit_on_escape(keys: Res<ButtonInput<KeyCode>>, mut exit: EventWriter<AppExit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn people_brought_in_are_listed_once_and_those_without_a_base_are_not() {
+        use dialogue::Talker;
+        use esm::FormId;
+        let base = |r: FormId| (r != FormId(0x30)).then_some(FormId(r.0 + 0x1000));
+        let listed = [Talker {
+            reference: FormId(0x10),
+            base: FormId(0x1010),
+            position: [0.0; 3],
+        }];
+        let shown = [
+            (FormId(0x10), [1.0, 1.0, 1.0]),
+            (FormId(0x20), [2.0, 3.0, 4.0]),
+            (FormId(0x30), [5.0, 5.0, 5.0]),
+        ];
+        let added = unlisted(&shown, &listed, base);
+        assert_eq!(added.len(), 1);
+        assert_eq!(added[0].reference, FormId(0x20));
+        assert_eq!(added[0].base, FormId(0x1020));
+        assert_eq!(added[0].position, [2.0, 3.0, 4.0]);
+        // Listed now, nothing more is added.
+        let all: Vec<Talker> = listed.iter().chain(&added).copied().collect();
+        assert!(unlisted(&shown, &all, base).is_empty());
+    }
 
     #[test]
     fn mouse_motion_cannot_turn_player_during_script_package_and_releases_afterward() {
