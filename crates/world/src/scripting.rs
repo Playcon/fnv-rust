@@ -297,6 +297,10 @@ pub struct GameState {
     /// Packages scripts gave people (`AddScriptPackage`), followed before
     /// their own.
     pub script_packages: HashMap<FormId, FormId>,
+    /// People whose script package has finished (its End action was
+    /// requested): [`GameState::end_script_package`] says so once for each
+    /// time a package is given.
+    pub ended_script_packages: HashSet<FormId>,
     /// People whose packages are to be looked at again at once: scripts
     /// asked (`EvaluatePackage`, `ResetAI`) or changed them
     /// (`AddScriptPackage`, `RemoveScriptPackage`); packages are otherwise
@@ -448,6 +452,25 @@ impl GameState {
     /// Deriving this from the saved package also preserves it across loading.
     pub fn player_looking_blocked(&self) -> bool {
         self.controls_off[controls::LOOKING] || self.script_packages.contains_key(&PLAYER_REF)
+    }
+
+    /// A person's script package has finished: asks for its End action
+    /// (`Event::PackageAction`), once for each time it was given. False
+    /// when they have none or it already finished. When a package counts as
+    /// finished is the caller's rule (`world::ai::finish_travel`).
+    pub fn end_script_package(&mut self, who: FormId) -> bool {
+        let Some(&package) = self.script_packages.get(&who) else {
+            return false;
+        };
+        if !self.ended_script_packages.insert(who) {
+            return false;
+        }
+        self.events.push(Event::PackageAction {
+            who,
+            package,
+            kind: PackageActionKind::End,
+        });
+        true
     }
 
     pub fn new(order: &LoadOrder) -> GameState {
@@ -932,6 +955,8 @@ pub enum Event {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageActionKind {
     Begin,
+    /// The package finished (`HighProcess` slot 360, `0x5a0`).
+    End,
     Change,
 }
 
@@ -2218,6 +2243,30 @@ impl<'a> Runner<'a> {
 
     /// Runs a result script (a dialogue line's, a quest stage's): its
     /// statements on `this`, with `owner`'s variables as its own.
+    /// Runs a package's action's script (`HighProcess` slots 358 to 360
+    /// run the action's script with the person as its reference, then its
+    /// topic and idle); false when the action has no script.
+    pub fn package_action(
+        &mut self,
+        who: FormId,
+        package: FormId,
+        kind: PackageActionKind,
+    ) -> bool {
+        let Some(package) = crate::ai::Package::load(self.order, package) else {
+            return false;
+        };
+        let action = match kind {
+            PackageActionKind::Begin => &package.actions.begin,
+            PackageActionKind::End => &package.actions.end,
+            PackageActionKind::Change => &package.actions.change,
+        };
+        let Some(source) = action.source().filter(|s| !s.trim().is_empty()) else {
+            return false;
+        };
+        self.run_source(&source, Some(who), None);
+        true
+    }
+
     pub fn run_source(
         &mut self,
         source: &str,
@@ -3311,11 +3360,13 @@ impl<'a> Runner<'a> {
                     kind: PackageActionKind::Begin,
                 });
                 self.state.script_packages.insert(who, new_package.form_id);
+                self.state.ended_script_packages.remove(&who);
                 self.state.evaluate.insert(who);
             }
             "RemoveScriptPackage" => {
                 let who = target?;
                 self.state.script_packages.remove(&who);
+                self.state.ended_script_packages.remove(&who);
                 self.state.evaluate.insert(who);
             }
             // The package is looked at again at once (the viewer's AI).

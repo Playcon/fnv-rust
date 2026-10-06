@@ -576,13 +576,32 @@ pub fn functions(tag: &str) -> TempData {
         0,
         &named(b"ACTI", VIGOR_TESTER, "VCG01VigorTester", &vigor_tester),
     ));
-    let package = |id: u32, name: &str, kind: u8| {
+    let package = |id: u32, name: &str, kind: u8, actions: &[(&[u8; 4], &str)]| {
         let mut d = sub(b"PKDT", &[0, 0, 0, 0, kind, 0, 0, 0, 0, 0, 0, 0]);
         d.extend(sub(b"PSDT", &[0xFF, 0xFF, 0, 0xFF, 0, 0, 0, 0]));
+        // Each action: its marker, then an empty idle, the script and an
+        // empty topic (which ends it).
+        for (marker, script) in actions {
+            d.extend(sub(marker, &[]));
+            d.extend(sub(b"INAM", &0u32.to_le_bytes()));
+            d.extend(sub(b"SCHR", &[0; 20]));
+            d.extend(sub(b"SCTX", &zstr(script)));
+            d.extend(sub(b"TNAM", &0u32.to_le_bytes()));
+        }
         named(b"PACK", id, name, &d)
     };
-    let mut packages = package(TRAVEL, "TestTravel", 6);
-    packages.extend(package(SANDBOX, "TestSandbox", 12));
+    // The travel package's actions each set `TestValue` to a number.
+    let mut packages = package(
+        TRAVEL,
+        "TestTravel",
+        6,
+        &[
+            (b"POBA", "set TestValue to 10"),
+            (b"POEA", "set TestValue to 20"),
+            (b"POCA", "set TestValue to 30"),
+        ],
+    );
+    packages.extend(package(SANDBOX, "TestSandbox", 12, &[]));
     plugin.extend(group(*b"PACK", 0, &packages));
     // The house is owned by the town and lies in the test region.
     let cell = |id: u32, name: &str, owner: Option<u32>| {

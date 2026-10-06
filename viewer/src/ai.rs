@@ -1212,6 +1212,10 @@ fn rethink(ctx: &mut Ctx, walker: &mut Walker, life: &mut Life, restart: bool) {
         return;
     }
     let Some((to, radius)) = goal else {
+        // A travel that goes nowhere ("near the current location") is over.
+        if let Some(p) = package.as_ref() {
+            world::ai::finish_travel(state, me, p);
+        }
         return;
     };
     // At the travel's end they face an `XMarkerHeading`'s heading (or
@@ -1222,6 +1226,9 @@ fn rethink(ctx: &mut Ctx, walker: &mut Walker, life: &mut Life, restart: bool) {
         .and_then(|p| world::ai::arrival_heading(order, state, me, p));
     if way.is_none() && mv::arrived(walker.position, to, radius) {
         walker.facing = arrival;
+        if let Some(p) = package.as_ref() {
+            world::ai::finish_travel(state, me, p);
+        }
         return;
     }
     if way.is_some() && distance(walker.position, to) <= radius.max(1.0) {

@@ -1019,8 +1019,22 @@ pub fn run_scripts(
                     use world::scripting::PackageActionKind;
                     let action = match kind {
                         PackageActionKind::Begin => &p.actions.begin,
+                        PackageActionKind::End => &p.actions.end,
                         PackageActionKind::Change => &p.actions.change,
                     };
+                    // A finished package's End action runs its script with
+                    // the person as its reference (`HighProcess` slot 360);
+                    // the Begin and Change scripts, which the game runs the
+                    // same way, still wait for their own dispatch.
+                    if kind == PackageActionKind::End
+                        && Runner::new(order, &scripts.0, state).package_action(who, package, kind)
+                    {
+                        println!(
+                            "{}: package {} finished; its End action's script ran.",
+                            name(who),
+                            name(package)
+                        );
+                    }
                     // Camera-bearing player idles with no script or topic
                     // can now use the actual KF. Other callback payloads
                     // still require their own synchronous dispatcher.

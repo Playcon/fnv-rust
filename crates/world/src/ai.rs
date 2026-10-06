@@ -648,6 +648,18 @@ pub fn current_package(order: &LoadOrder, state: &GameState, actor: FormId) -> O
         })
 }
 
+/// A script's travel package has finished when its person is where it sends
+/// them (or it sends them nowhere, as "near the current location"): the
+/// End action is asked for, once. That a package ends when the travel does
+/// is a guess [G]; the game runs the End action when it finishes a package
+/// (slot `0x5a0`), and what finishes a travel isn't traced. False for
+/// other packages, or one the script didn't give.
+pub fn finish_travel(state: &mut GameState, actor: FormId, package: &Package) -> bool {
+    package.kind == kinds::TRAVEL
+        && state.script_packages.get(&actor) == Some(&package.form_id)
+        && state.end_script_package(actor)
+}
+
 /// Whom a follow or accompany package keeps near, and how near: its
 /// target (`PTDT`, a specific reference) and the target's value, which
 /// for these is the distance (`CheyenneAccompany`: Sunny Smiles, 128;

@@ -143,3 +143,88 @@ fn player_package_blocks_looking_independently_of_controls_and_survives_save() {
         "removal must not enable script-disabled looking"
     );
 }
+
+fn value(state: &GameState) -> f32 {
+    state.globals[&FormId(testdata::functions::ids::VALUE)]
+}
+
+fn travel() -> impl Fn(&LoadOrder) -> world::ai::Package {
+    |order| world::ai::Package::load(order, FormId(TRAVEL)).unwrap()
+}
+
+/// `HighProcess` slots 358 to 360 run the begin, end and change actions'
+/// scripts with the person as their reference.
+#[test]
+fn a_package_action_runs_its_script_on_the_person() {
+    let (_data, order) = order();
+    let mut state = GameState::new(&order);
+    let scripts = ScriptCache::default();
+    let run_action = |state: &mut GameState, kind| {
+        Runner::new(&order, &scripts, state).package_action(FormId(ADULT_REF), FormId(TRAVEL), kind)
+    };
+    assert!(run_action(&mut state, PackageActionKind::Begin));
+    assert_eq!(value(&state), 10.0);
+    assert!(run_action(&mut state, PackageActionKind::End));
+    assert_eq!(value(&state), 20.0);
+    assert!(run_action(&mut state, PackageActionKind::Change));
+    assert_eq!(value(&state), 30.0);
+    // A package with no script in the action, and one that isn't a package.
+    let run_other = |state: &mut GameState, package: u32| {
+        Runner::new(&order, &scripts, state).package_action(
+            FormId(ADULT_REF),
+            FormId(package),
+            PackageActionKind::End,
+        )
+    };
+    assert!(!run_other(&mut state, SANDBOX));
+    assert!(!run_other(&mut state, ADULT_REF));
+    assert_eq!(value(&state), 30.0);
+}
+
+/// A script's travel package finishes once; giving it again, or taking it
+/// away, starts it over.
+#[test]
+fn a_script_travel_package_finishes_once_and_asks_for_its_end_action() {
+    let (_data, order) = order();
+    let mut state = GameState::new(&order);
+    let package = travel()(&order);
+    let who = FormId(ADULT_REF);
+    // Nothing given: nothing to finish.
+    assert!(!world::ai::finish_travel(&mut state, who, &package));
+    run(&order, &mut state, "AdultRef.AddScriptPackage TestTravel");
+    state.events.clear();
+
+    assert!(world::ai::finish_travel(&mut state, who, &package));
+    assert_eq!(
+        state.events,
+        [action(ADULT_REF, TRAVEL, PackageActionKind::End)]
+    );
+    // Once.
+    state.events.clear();
+    assert!(!world::ai::finish_travel(&mut state, who, &package));
+    assert!(state.events.is_empty());
+    // Given again: it can finish again.
+    run(&order, &mut state, "AdultRef.AddScriptPackage TestTravel");
+    state.events.clear();
+    assert!(world::ai::finish_travel(&mut state, who, &package));
+    // Taken away and given: the same.
+    run(&order, &mut state, "AdultRef.RemoveScriptPackage");
+    assert!(!world::ai::finish_travel(&mut state, who, &package));
+    run(&order, &mut state, "AdultRef.AddScriptPackage TestTravel");
+    assert!(world::ai::finish_travel(&mut state, who, &package));
+}
+
+#[test]
+fn only_a_travel_package_the_script_gave_finishes() {
+    let (_data, order) = order();
+    let mut state = GameState::new(&order);
+    let sandbox = world::ai::Package::load(&order, FormId(SANDBOX)).unwrap();
+    let travel = travel()(&order);
+    let who = FormId(ADULT_REF);
+    // A sandbox package the script gave doesn't end with a walk.
+    run(&order, &mut state, "AdultRef.AddScriptPackage TestSandbox");
+    assert!(!world::ai::finish_travel(&mut state, who, &sandbox));
+    // A travel package that isn't the one the script gave isn't theirs.
+    assert!(!world::ai::finish_travel(&mut state, who, &travel));
+    assert!(!state.ended_script_packages.contains(&who));
+}
