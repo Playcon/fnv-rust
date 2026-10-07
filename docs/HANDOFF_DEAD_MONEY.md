@@ -182,16 +182,26 @@ Format and lint: `cargo fmt` and `cargo clippy` in both places.
 
 ## 6. Rules
 
-* **No decompiled code, disassembly or executable bytes in this repository**, and no game assets
-  (text, models, sounds, textures). Describe behaviour in your own words; function addresses in prose
-  are fine. Never write a path into the private research folder into any file here.
-* **Tests for every change.** If something can only be checked by playing, say so in the pull request
-  and add it to the maintainer's test note.
-* **One engine change per branch**, from `main` where it does not need other unmerged work, with a
-  short description saying what was copied from the original's behaviour and what was guessed [G].
-  Dead Money content (docs, test characters, matrix) goes on its own branch.
-* Mark guesses [G] and things to check in the original game [C], in code comments and docs.
-* Commit with your own identity; don't change git config in someone else's checkout.
+The project's own rules are in `AGENTS.md` and `CONTRIBUTING.md` on `slaterain/nv-rs` `main`, and they
+win over anything here. In short:
+
+* **Process.** Claim an issue, work on a branch from the latest `main`, send one small pull request for
+  one system, and the maintainer verifies and merges. Describe what changed, the evidence, and what is
+  uncertain. Say in the pull request that AI helped and with what; the contributor reviews and answers
+  for the result.
+* **Provenance.** Behaviour comes from the game's files, the executable (marked with its address, as
+  ADR-0003 describes) or recordings of the original game. Mark guesses [G] and things to check in the
+  original [C]. Translated logic carries its address; the decompiler's automatic names (anything made
+  from an address) are never written into code or docs, and no raw exports, databases, executable bytes,
+  game files or recordings are committed.
+* **No absolute user-profile paths** in any file (write `%USERPROFILE%`); the repository hygiene test
+  (`crates/nvinspect/tests/repo_hygiene.rs`) rejects them.
+* **Checks.** `cargo test --workspace`, `cargo clippy --workspace --all-targets`,
+  `cargo fmt --all -- --check`, `cargo build --release`, and the same checks from `viewer/`. Three
+  tests (`a_squares_grass_becomes_one_mesh_per_grass` and two water tests in `cellview`) fail on
+  `main` itself at the time of writing.
+* **Tests for every change**, from the shared test-data tools; one engine change per branch; say in the
+  pull request what you only checked by script and what you played with the keys.
 
 ## 7. Overlap with the maintainer's open pull requests (slaterain/nv-rs #11 and #12)
 
@@ -247,3 +257,12 @@ Compare links:
 
 * https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:rebase/dialogue-info-links?expand=1
 * https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:rebase/viewer-use-flag?expand=1
+
+### Status after the maintainer's own merge (2026-10-07)
+
+The maintainer's integration branch (`claude/overnight-integration`) already merged most of the
+branches above; its `docs/CONTRIB_PLAYCON.md` lists each as merged, partly taken or dropped (sitting,
+the shared caches, `package-end-action`, `brought-in-talkers` and `script-cell-grid-lag` were dropped
+in favour of what it already had). Do not send those again. The four small branches prepared for
+`main` (`rebase/radio`, `rebase/line-of-sight`, `rebase/dialogue-info-links`, `rebase/viewer-use-flag`)
+pass the hygiene test and the checks on `main` `33dee45`, and are therefore redundant.
