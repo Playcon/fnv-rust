@@ -192,3 +192,58 @@ Format and lint: `cargo fmt` and `cargo clippy` in both places.
   Dead Money content (docs, test characters, matrix) goes on its own branch.
 * Mark guesses [G] and things to check in the original game [C], in code comments and docs.
 * Commit with your own identity; don't change git config in someone else's checkout.
+
+## 7. Overlap with the maintainer's open pull requests (slaterain/nv-rs #11 and #12)
+
+Checked 2026-10-07 against the two pull requests, by file lists and by the functions and features each
+one carries.
+
+* **#11** ("Bink intro, crafting, terminals and hacking, repairs, item scripts, companions, Caravan,
+  weapon mods, casinos", base `main`) carries its own crafting, `ForceTerminalBack`, Caravan,
+  `OpenTeammateContainer`, `ShowRecipeMenu` and casino rules.
+* **#12** ("Viewer performance", base `claude/overnight-integration`) is performance work only. Its base,
+  the maintainer's integration branch, already merges most of the branches below (its
+  `docs/CONTRIB_PLAYCON.md` lists what was merged, dropped or gated). `package-end-action` and
+  `brought-in-talkers` were left out there as duplicates of code it already has.
+
+DUPLICATE = the same feature is already there; PARTLY = some of it is; UNIQUE = neither has it.
+
+| Branch | vs #11 | vs #12 | Why |
+| --- | --- | --- | --- |
+| `dlc-dead-money` | UNIQUE | UNIQUE | research pass and data-pass script only |
+| `dm-radio` | UNIQUE | UNIQUE | radio script functions; #11 does not touch them |
+| `dm-los-anim` | UNIQUE | UNIQUE | `IsAnimPlaying`, `GetLineOfSight`; #11 edits the same files for other functions |
+| `dm-shaders` | UNIQUE | UNIQUE | `PlayMagicShaderVisuals` |
+| `dm-terminal-back` | DUPLICATE | UNIQUE | #11 handles `ForceTerminalBack` (terminal back event, `terminal.rs`, `menus.rs`) |
+| `dm-caravan-cards` | DUPLICATE | UNIQUE | #11 handles `AddCardToPlayer`, `GetContainer`, `RemoveMe` (Caravan, item scripts) |
+| `dm-companions-actors` | PARTLY | UNIQUE | #11 has `OpenTeammateContainer`; `PushActorAway`, `SetDisposition`, `GetCauseofDeath` are not in it |
+| `dm-dispel` | UNIQUE | UNIQUE | `DispelAllSpells` |
+| `dm-traps` | UNIQUE | UNIQUE | `SetVATSTarget`, `FireWeapon` |
+| `dm-conditions` | UNIQUE | UNIQUE | `IsFacingUp`; `GetVATSValue` is only a name in `main` |
+| `dm-menus` | PARTLY | UNIQUE | #11 handles `ShowRecipeMenu` and the casino menus' script side; the other `Show...MenuParams` are not duplicated in the same way (check when rebasing) |
+| `dm-entry` | UNIQUE | UNIQUE | `--character` loader (neither has it) |
+| `dm-intro` | UNIQUE | UNIQUE | slideshow, Villa start, `SayToDone`; #11 has its own Bink movie player (different feature) |
+| `dm-voice` | PARTLY | UNIQUE | #11 adds Pip-Boy and sound work in the same files; the Ogg voice decoding, narrator voice and `--choose` are not in it |
+| `dm-act2` | PARTLY | PARTLY | #11 touches `sitting.rs`, `ai.rs`; #12 has its own "places share the textures already on the GPU" (like the shared caches here); essential knock-down and teammates-follow are not in either |
+| `dm-verify` | UNIQUE | UNIQUE | `IsAnimPlaying` end-of-group fix |
+| `dm-crafting` | DUPLICATE | UNIQUE | #11 has `world::crafting`, `ui::menus::recipe`, `game_menus/recipe.rs` (the same files); only `nvinspect craft` and `--open-menu recipes:` may differ |
+| `dm-casino-character` | UNIQUE | UNIQUE | test characters and docs |
+| `package-end-action` | UNIQUE | UNIQUE | End action of a script's Travel package (the integration base has its own, see above) |
+| `teammate-wait` | UNIQUE | UNIQUE | guard package is the wait order (needs the follow rule from `dm-act2`) |
+| `script-cell-grid-lag` | UNIQUE | UNIQUE | moved player waits for the outdoor grid (the integration base says nothing is left to guard) |
+| `brought-in-talkers` | UNIQUE | UNIQUE | brought-in people join the talker list (the integration base has its own list) |
+| `dialogue-info-links` | UNIQUE | UNIQUE | `INFC` lines of a topic (`world/dialogue.rs`); `main` only names `INFC` in a coverage table |
+| `viewer-use-flag` | UNIQUE | UNIQUE | `--use REF` (`viewer/src/args.rs`) |
+| `dm-coverage`, `dm-handoff` | UNIQUE | UNIQUE | docs only |
+
+### Rebased copies on `slaterain/nv-rs` `main` (fork `Playcon/nv-rs`)
+
+Both applied without conflicts on `33dee45` and passed their tests:
+
+* `rebase/dialogue-info-links`: `cargo test -p world -p testdata` all green, clippy clean.
+* `rebase/viewer-use-flag`: `cargo test --release` in `viewer/`, 89 passed.
+
+Compare links:
+
+* https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:rebase/dialogue-info-links?expand=1
+* https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:rebase/viewer-use-flag?expand=1
