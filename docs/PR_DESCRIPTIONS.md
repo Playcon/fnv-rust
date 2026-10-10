@@ -149,3 +149,28 @@ death; one run ended in "Quest Failed" for MQ03 that is not explained.
 Not played: the key, the replies, the theater and suites fights.
 **[G]** none. **[C]** the kitchen with all three valves repaired quickly.
 **Base.** `main`. **Dependency.** None.
+
+## Route branches (October 2026, after the first nine)
+
+Docs and test characters only (no engine code), each based on `main` and independent; they move
+quests in `docs/DEAD_MONEY_COVERAGE.md` from NOT PLAYED to PARTIAL (the header counts on each branch
+match its rows). `claude/dm-all-routes` on the fork merges them all (4 PLAYED, 52 PARTIAL,
+0 NOT PLAYED, 1 NEVER STARTED). No stopgap code was needed. AI disclosure as above.
+
+| Branch | Quests |
+|---|---|
+| `pr/suites-christine` | MQ03c Last Luxuries |
+| `pr/theater-dean` | MQ03b Curtain Call at the Tampico |
+| `pr/vault-ending` | MQ03, the ending, the bunker transition (MQ03d stays NEVER STARTED) |
+| `pr/bark-timers` | Dog, Dean and Christine bark timers |
+| `pr/fade-timers` | fade to credits, the Auto-Doc fade |
+| `pr/enemy-test` | the developer's enemy test quest |
+| `pr/radio-quests` | the eight radio quests (blocked by the radio engine) |
+| `pr/elijah-barks` | Elijah's lobby intercom, the suites terminal effect, the Starlet counter |
+| `pr/follower-fire` | dismissing the Mojave companions, Arcade's goodbye |
+| `pr/toxic-quests` | the toxic cloud, global toxic damage (blocked by Hardcore) |
+| `pr/casino-support` | chip reward, comps (blocked by the games), hologram vendor, challenges |
+| `pr/wt-support` | the West Town support quest |
+| `pr/gala-fireworks` | the Gala fireworks quest |
+
+(`pr/dean-escort`, `pr/christine-escort`, `pr/gala-event` and `pr/casino-quests` are described above.)
