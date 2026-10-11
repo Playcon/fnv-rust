@@ -193,3 +193,103 @@ a sliding door for a walker; what attacking Elijah (a ghost by script) does in t
 Known and not a Dead Money rule: the Intel Iris Xe Vulkan driver crashes when the Villa squares
 load south of the Gala tower (`NV_LOAD_RADIUS=0` avoids it); the vault terminals show no monitor
 frame (a rendered-terminal fade issue, not looked at here). AI disclosure as above.
+
+## Pull requests for the stopgaps and fixes found while playing Dead Money by hand
+
+Four small branches from the contributor's own playthrough of the Dead Money routes in the viewer
+(2026-10-11). Each is based on `main` at the commit named in its row, depends on no other branch
+(the two stopgaps touch the same doc line in `crates/world/src/guesses.rs`: the second to merge resolves
+it by keeping both sentences), and was dry-merged against `main` at `a24bc31` without conflicts.
+Compare links open the pull request form against `slaterain/nv-rs` `main`; none is opened.
+
+Review order: 1 and 2 (plain fixes), then 3 and 4 (stopgaps behind `NV_GUESSES=1`).
+
+### 1. `pr/fix-terminal-result-typing`: a terminal item's result line is typed in full
+
+**What it does.** The terminal menu types an item's result (`RNAM`, "Disconnecting lock...") beside the
+prompt at a rate of 0, meaning all at once. `Line::step` worked out the characters for a step as
+`(now - next) / ms + 1`; with `ms` 0 that is infinity, `usize::MAX`, and the `+ 1` wraps to 0 in a release
+build (and panics with an overflow in a debug one), so the line showed its first letter and never the rest.
+A rate of 0 now types the whole line.
+**Found by.** Opening the Sierra Madre vault's security terminal in the viewer and picking "Disengage Vault
+Security Protocols": only "D" appeared. It also hid the result text of the Vera item.
+**Copied from the original.** Nothing new: the rate, the queue and the typing are the existing translation
+(`00759da0`, `006ffea0` in the code comments); only the arithmetic for a rate of 0 changes.
+**Guessed [G].** That a rate of 0 types the line at once (the field's own comment says "0: at once").
+**Needs the original [C].** The order of "show the result" and "go back a screen" for an item whose script says
+`ForceTerminalBack` (the Vera item): not touched here.
+**Tests.** `an_items_result_is_typed_in_full` (`ui`); before the change it fails with "attempt to add with
+overflow".
+**Base.** `main`. **Dependency.** None.
+Compare: https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/fix-terminal-result-typing?expand=1
+
+### 2. `pr/fix-terminal-prompt`: a terminal under the crosshair shows its prompt
+
+**What it does.** `object_in_view` (viewer) has a branch that builds the prompt "Access <name>" for a
+terminal, but terminals were not among the objects it accepts, so a terminal with no `OnActivate` script
+showed no prompt (E still opened it). One line adds terminals to the accepted objects.
+**Found by.** The Dead Money vault and clinic terminals showed no prompt.
+**Copied from the original.** The prompt text branch was already there.
+**Guessed [G].** None. **Needs the original [C].** None.
+**Tests.** None added: a viewer system; checked by hand in the viewer (the prompt shows; E opens the terminal).
+**Base.** `main`. **Dependency.** None.
+Compare: https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/fix-terminal-prompt?expand=1
+
+### 3. `pr/stopgap-talking-activator-actor`: a talking activator speaks as the actor a script gave it
+
+**What it does.** Behind `NV_GUESSES=1`. (a) `SetTalkingActivatorActor` stores an actor for the activator's
+base; a conversation with that activator now uses the actor's lines, voice and factions
+(`world::dialogue::speaker_for`) while the activator stays where the sound and the view are. (b) E on a
+talking activator talks, after its own `OnActivate` script let it through. (c) A script's `Activate` of a
+talking activator that has an actor also talks: the Sierra Madre vault's main terminal runs
+`VaultMainElijahIntercomREF.Activate Player 1`, whose `OnActivate` ends with an `Activate` that names no
+activator, so the event carried none and nothing started the conversation. The vault's Elijah intercom
+(about twenty topics) and the Gala event control panel need it.
+**Copied from the original.** The setter (`005d4cc0` -> `004ff0e0`, which stores the actor in the base's +0x90)
+is traced, and the scripts and lines are the game's own data.
+**Guessed [G].** How the game uses that stored actor when a conversation starts, and what its `Activate` of a
+talking activator does, are not traced (nothing here reads `FalloutNV.exe`'s activation of a talking activator),
+so all three behaviours only run with `NV_GUESSES=1` and are named here.
+**Needs the original [C].** In the original: activate the Gala panel (with `NVDLC01GalaEventQuest` running) and
+the vault intercom and write down what opens.
+**Tests.** `contrib_guesses` (the speaker before and after the script, a person's own, the switch off).
+Seen by hand: the vault sequence (door terminal, main terminal's Vera item, Elijah's intercom conversation
+through the compliance reply) and the Gala panel through stage 50.
+**Base.** `main`. **Dependency.** None.
+Compare: https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/stopgap-talking-activator-actor?expand=1
+
+### 4. `pr/stopgap-walker-opens-sliding-door`: someone stuck against a shut door opens it
+
+**What it does.** Behind `NV_GUESSES=1`. When a walker's path is reported stuck and a shut, unlocked door lies
+within a doorway's reach (160 units across and up or down), the door is opened for them
+(`world::doors::shut_door_near`, `ai::open_door_in_the_way`). The game's path following opens the doors across a
+path (`009e20c0`, `doors::walker_at_door`), but the navmesh only lists swing doors that are not sliding, and the
+Sierra Madre vault's two entry doors are sliding (flag 0x10) and only ever closed by script
+(`NVDLC01VaultCodeHolderScript`), so Elijah stood at them.
+**Copied from the original.** Nothing: it is a guess.
+**Guessed [G].** That the original opens a sliding door for a walker by the same activation; how it does so is
+not traced.
+**Needs the original [C].** Whether Elijah opens the vault's entry doors himself in the original.
+**Tests.** `a_walker_stuck_at_a_shut_door_gets_that_door` (`world`). Seen by hand: Elijah walks through both
+entry doors on his own.
+**Base.** `main`. **Dependency.** None.
+Compare: https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/stopgap-walker-opens-sliding-door?expand=1
+
+
+**Checks (run by the agent in a local checkout, each branch on its own base, 2026-10-11).**
+`cargo test --workspace`, `cargo clippy --workspace --all-targets`, `cargo fmt --all -- --check`,
+`cargo build --release`, and from `viewer/` the same four. Every branch: 0 clippy warnings, fmt ok, the
+repository hygiene test passes, both builds finish, and the only failing tests are the three that fail on
+`main` itself (`a_squares_grass_becomes_one_mesh_per_grass`, `a_square_gets_its_own_water_and_its_placed_water`,
+`water_at_the_distant_water_height_reflects_the_scene`). The viewer's 182 tests pass on 2, 3 and 4 (1 changes no
+viewer code, so its viewer checks were not run).
+
+| Branch | Workspace tests | Clippy | Fmt | Build |
+|---|---|---|---|---|
+| `pr/fix-terminal-result-typing` | 15,950 passed, 3 baseline failures | 0 | ok | ok |
+| `pr/fix-terminal-prompt` | 15,949 passed, 3 baseline failures; viewer 182 passed | 0 (viewer 0) | ok | ok (viewer ok) |
+| `pr/stopgap-talking-activator-actor` | 15,760 passed, 3 baseline failures; viewer 182 passed | 0 (viewer 0) | ok | ok (viewer ok) |
+| `pr/stopgap-walker-opens-sliding-door` | 15,950 passed, 3 baseline failures; viewer 182 passed | 0 (viewer 0) | ok | ok (viewer ok) |
+**AI assistance.** As described at the top of this file: Claude (Claude Code, Sonnet 5.5) wrote the code, tests
+and text with the contributor, who set the goals, played the routes in the viewer, reported what happened, and
+reviews each branch and runs the acceptance routes before opening any pull request.
