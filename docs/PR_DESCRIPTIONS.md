@@ -155,7 +155,8 @@ Not played: the key, the replies, the theater and suites fights.
 Docs and test characters only (no engine code), each based on `main` and independent; they move
 quests in `docs/DEAD_MONEY_COVERAGE.md` from NOT PLAYED to PARTIAL (the header counts on each branch
 match its rows). `claude/dm-all-routes` on the fork merges them all (4 PLAYED, 52 PARTIAL,
-0 NOT PLAYED, 1 NEVER STARTED). No stopgap code was needed. AI disclosure as above.
+0 NOT PLAYED, 1 NEVER STARTED). No stopgap code was needed for the route branches themselves
+(the stopgaps and fixes found while playing them are in the next section). AI disclosure as above.
 
 | Branch | Quests |
 |---|---|
@@ -165,12 +166,30 @@ match its rows). `claude/dm-all-routes` on the fork merges them all (4 PLAYED, 5
 | `pr/bark-timers` | Dog, Dean and Christine bark timers |
 | `pr/fade-timers` | fade to credits, the Auto-Doc fade |
 | `pr/enemy-test` | the developer's enemy test quest |
-| `pr/radio-quests` | the eight radio quests (blocked by the radio engine) |
+| `pr/radio-quests` | the eight radio quests (started; not re-run with the radio engine now in main) |
 | `pr/elijah-barks` | Elijah's lobby intercom, the suites terminal effect, the Starlet counter |
 | `pr/follower-fire` | dismissing the Mojave companions, Arcade's goodbye |
-| `pr/toxic-quests` | the toxic cloud, global toxic damage (blocked by Hardcore) |
-| `pr/casino-support` | chip reward, comps (blocked by the games), hologram vendor, challenges |
+| `pr/toxic-quests` | the toxic cloud, global toxic damage (`SetHardcore 1` switches Hardcore on) |
+| `pr/casino-support` | chip reward, comps (the games exist now; not played with the quest), hologram vendor, challenges |
 | `pr/wt-support` | the West Town support quest |
 | `pr/gala-fireworks` | the Gala fireworks quest |
 
 (`pr/dean-escort`, `pr/christine-escort`, `pr/gala-event` and `pr/casino-quests` are described above.)
+
+## Stopgaps and fixes found while playing the routes by hand (2026-10-11)
+
+Each is on its own branch based on `main`, one thing each. Stopgaps are guesses [G] behind
+`NV_GUESSES=1` (`crates/world/src/guesses.rs`); none is merged into `claude/dm-all-routes`.
+
+| Branch | What | Kind |
+|---|---|---|
+| `pr/stopgap-talking-activator-actor` | A talking activator speaks as the actor a script gave it (`SetTalkingActivatorActor`), E on one talks, and a script's `Activate` of one that has an actor talks too: the vault's Elijah intercom (`NVDLC01VaultElijahTalkingActivatorScript`, started by the main terminal's script) and the Gala event control panel. Test: `contrib_guesses`. How the original starts the talk is not traced. | stopgap [G] |
+| `pr/stopgap-walker-opens-sliding-door` | Someone stuck against a shut, unlocked door opens it: the navmesh only lists swing doors that are not sliding, and the vault's two entry doors are sliding (flag 0x10) and only ever closed by script, so Elijah stood at them. No test yet. How the original opens a sliding door for a walker is not traced. | stopgap [G] |
+| `pr/fix-terminal-prompt` | A terminal under the crosshair shows its "Access" prompt (the branch for it existed but terminals were not among the objects it accepts). | fix |
+| `pr/fix-terminal-result-typing` | A terminal item's result line (rate 0) typed only its first letter: the step divided by the rate, which wraps to 0 characters in a release build. Test: `an_items_result_is_typed_in_full` (fails with an overflow before the fix). | fix |
+
+**[G]** the two stopgaps. **[C]** how the original starts a talking activator's conversation and opens
+a sliding door for a walker; what attacking Elijah (a ghost by script) does in the vault.
+Known and not a Dead Money rule: the Intel Iris Xe Vulkan driver crashes when the Villa squares
+load south of the Gala tower (`NV_LOAD_RADIUS=0` avoids it); the vault terminals show no monitor
+frame (a rendered-terminal fade issue, not looked at here). AI disclosure as above.
