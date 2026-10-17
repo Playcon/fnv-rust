@@ -293,3 +293,38 @@ viewer code, so its viewer checks were not run).
 **AI assistance.** As described at the top of this file: Claude (Claude Code, Sonnet 5.5) wrote the code, tests
 and text with the contributor, who set the goals, played the routes in the viewer, reported what happened, and
 reviews each branch and runs the acceptance routes before opening any pull request.
+
+## Rebased onto the new `main` (2026-10-17)
+
+`main` moved to `a8a6cd12` (pull requests #205 to #219: the engine translation, nothing the viewer or
+Dead Money uses). Seventeen route and support branches and `pr/stopgap-talking-activator-actor` no longer
+merged cleanly: each added a paragraph to `docs/MILESTONES.md`, which `main` has since cut from 1,098 to 62
+lines (the per-batch notes left it). Each was cherry-picked onto `main` as `<name>-r2`, taking `main`'s
+`docs/MILESTONES.md` (that paragraph is dropped; the same facts are in `docs/DEAD_MONEY.md` and
+`docs/DEAD_MONEY_COVERAGE.md`, which are unchanged). The old branches are kept untouched on the fork. The
+other branches (`animated-collision`, `dense-dead-money-worlds`, `isanimplaying-people`, `teammate-follow`,
+`travel-here-done`, the fixes and the other stopgaps) merge cleanly with `main` and keep their names.
+`claude/dm-all-routes-r2` is the integration branch with `main` merged in. All 19 `-r2` branches were
+dry-merged against `main` without conflicts. The check results above were run on the old bases; the change
+since is only the dropped milestones paragraph and the new `main`.
+
+| Old branch | New branch | Compare |
+|---|---|---|
+| `pr/bark-timers` | `pr/bark-timers-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/bark-timers-r2?expand=1 |
+| `pr/casino-quests` | `pr/casino-quests-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/casino-quests-r2?expand=1 |
+| `pr/casino-support` | `pr/casino-support-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/casino-support-r2?expand=1 |
+| `pr/christine-escort` | `pr/christine-escort-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/christine-escort-r2?expand=1 |
+| `pr/dean-escort` | `pr/dean-escort-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/dean-escort-r2?expand=1 |
+| `pr/elijah-barks` | `pr/elijah-barks-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/elijah-barks-r2?expand=1 |
+| `pr/enemy-test` | `pr/enemy-test-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/enemy-test-r2?expand=1 |
+| `pr/fade-timers` | `pr/fade-timers-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/fade-timers-r2?expand=1 |
+| `pr/follower-fire` | `pr/follower-fire-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/follower-fire-r2?expand=1 |
+| `pr/gala-event` | `pr/gala-event-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/gala-event-r2?expand=1 |
+| `pr/gala-fireworks` | `pr/gala-fireworks-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/gala-fireworks-r2?expand=1 |
+| `pr/radio-quests` | `pr/radio-quests-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/radio-quests-r2?expand=1 |
+| `pr/suites-christine` | `pr/suites-christine-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/suites-christine-r2?expand=1 |
+| `pr/theater-dean` | `pr/theater-dean-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/theater-dean-r2?expand=1 |
+| `pr/toxic-quests` | `pr/toxic-quests-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/toxic-quests-r2?expand=1 |
+| `pr/vault-ending` | `pr/vault-ending-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/vault-ending-r2?expand=1 |
+| `pr/wt-support` | `pr/wt-support-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/wt-support-r2?expand=1 |
+| `pr/stopgap-talking-activator-actor` | `pr/stopgap-talking-activator-actor-r2` | https://github.com/slaterain/nv-rs/compare/main...Playcon:nv-rs:pr/stopgap-talking-activator-actor-r2?expand=1 |
